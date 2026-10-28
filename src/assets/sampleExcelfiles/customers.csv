@@ -1,0 +1,11 @@
+customer_id,customer_name,industry,region,size_segment
+1001,Holmes-Hayes,Healthcare,EMEA,Enterprise
+1002,"Riley, Riddle and Johnson",Healthcare,LATAM,SMB
+1003,Clark-Cruz,Manufacturing,EMEA,SMB
+1004,"West, Torres and Peters",Healthcare,LATAM,Enterprise
+1005,"Osborne, Nelson and Moore",Manufacturing,LATAM,SMB
+1006,"Scott, Hughes and Stevens",Healthcare,EMEA,SMB
+1007,Johnson and Sons,Technology,LATAM,Mid-Market
+1008,"Martin, Hoffman and Russo",Retail,NA,SMB
+1009,Rice LLC,Biotech,APAC,Enterprise
+1010,"Baldwin, Weaver and Martin",Finance,LATAM,Enterprise

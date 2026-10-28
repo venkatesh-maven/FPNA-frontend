@@ -1,0 +1,851 @@
+import React, { useState, useContext, useRef, useEffect } from 'react';
+import { FiUpload, FiX } from 'react-icons/fi';
+import { toast } from 'react-toastify';
+import * as XLSX from 'xlsx';
+import { API_BASE_URL } from '../../../config/config';
+import { AuthContext } from '../../../context/AuthContext';
+
+const GLExcelUpload = ({ token, onUploadSuccess, endpoint, title, description, requiredFields }) => {
+  const [file, setFile] = useState(null);
+  const [uploadedHeaders, setUploadedHeaders] = useState([]);
+  const [previewData, setPreviewData] = useState([]);
+  const [mappings, setMappings] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [draggingField, setDraggingField] = useState(null);
+  const [connections, setConnections] = useState([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [visibleRows, setVisibleRows] = useState(30);
+  const [editingCell, setEditingCell] = useState(null);
+  const [editedValue, setEditedValue] = useState('');
+  const previewTableRef = useRef(null);
+  const containerRef = useRef(null);
+
+  // Handle scroll for lazy loading
+  useEffect(() => {
+    const table = previewTableRef.current;
+    if (!table) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = table;
+      if (scrollTop + clientHeight >= scrollHeight - 20) {
+        setVisibleRows(prev => Math.min(prev + 30, previewData.length));
+      }
+    };
+
+    table.addEventListener('scroll', handleScroll);
+    return () => table.removeEventListener('scroll', handleScroll);
+  }, [previewData]);
+
+  // Calculate SVG connections
+  useEffect(() => {
+    if (!containerRef.current || !uploadedHeaders.length) return;
+    
+    const calculateConnections = () => {
+      const newConnections = [];
+      Object.entries(mappings).forEach(([excelHeader, systemField]) => {
+        const sourceElem = document.getElementById(`backend-${systemField}`);
+        const targetElem = document.getElementById(`uploaded-${excelHeader}`);
+        
+        if (sourceElem && targetElem) {
+          const containerRect = containerRef.current.getBoundingClientRect();
+          const sourceRect = sourceElem.getBoundingClientRect();
+          const targetRect = targetElem.getBoundingClientRect();
+          
+          const sourceX = sourceRect.right - containerRect.left;
+          const sourceY = sourceRect.top + sourceRect.height/2 - containerRect.top;
+          const targetX = targetRect.left - containerRect.left;
+          const targetY = targetRect.top + targetRect.height/2 - containerRect.top;
+          
+          newConnections.push({
+            id: `${systemField}-${excelHeader}`,
+            path: `M${sourceX},${sourceY} C${(sourceX + targetX)/2},${sourceY} ${(sourceX + targetX)/2},${targetY} ${targetX},${targetY}`,
+            systemField,
+            excelHeader
+          });
+        }
+      });
+      
+      setConnections(newConnections);
+    };
+
+    const timer = setTimeout(calculateConnections, 100);
+    return () => clearTimeout(timer);
+  }, [mappings, uploadedHeaders]);
+
+  const handleDragStart = (fieldId) => {
+    setDraggingField(fieldId);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e, excelHeader) => {
+    e.preventDefault();
+    if (draggingField) {
+      // Remove any existing mapping to this system field
+      const updatedMappings = { ...mappings };
+      Object.entries(updatedMappings).forEach(([header, field]) => {
+        if (field === draggingField) {
+          delete updatedMappings[header];
+        }
+      });
+      
+      // Add new mapping (Excel header -> system field)
+      updatedMappings[excelHeader] = draggingField;
+      setMappings(updatedMappings);
+    }
+    setDraggingField(null);
+  };
+
+  const removeMapping = (excelHeader) => {
+    const updatedMappings = { ...mappings };
+    delete updatedMappings[excelHeader];
+    setMappings(updatedMappings);
+  };
+
+  const handleFileDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setDragActive(false);
+    }
+  };
+
+  const handleFileDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      handleFile(e.target.files[0]);
+    }
+  };
+
+  const handleFile = async (file) => {
+    const validExtensions = ['.xlsx', '.xls', '.csv'];
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+    
+    if (!validExtensions.includes(`.${fileExtension}`)) {
+      toast.error('Please upload a valid Excel file (XLSX, XLS, CSV)');
+      return;
+    }
+
+    setFile(file);
+    setMappings({});
+    setUploadProgress(0);
+    setVisibleRows(30);
+    
+    try {
+      const { headers, previewData } = await readExcelFile(file);
+      setUploadedHeaders(headers);
+      setPreviewData(previewData);
+      
+      // Auto-map based on common patterns
+      const autoMappings = {};
+      headers.forEach(header => {
+        const lowerHeader = header.toLowerCase();
+        
+        // Find matching system field
+        const matchedField = requiredFields.find(field => {
+          const isDirectMatch = lowerHeader === field.id.toLowerCase();
+          const matchesAlias = field.aliases?.some(alias => 
+            alias && lowerHeader === alias.toLowerCase()
+          );
+          return isDirectMatch || matchesAlias;
+        });
+        
+        if (matchedField) {
+          autoMappings[header] = matchedField.id;
+        }
+      });
+      
+      setMappings(autoMappings);
+    } catch (error) {
+      toast.error('Failed to read file. Please try again.');
+      console.error('Error reading file:', error);
+    }
+  };
+
+  const readExcelFile = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          
+          // Get headers
+          const headers = [];
+          const range = XLSX.utils.decode_range(worksheet['!ref']);
+          for (let C = range.s.c; C <= range.e.c; ++C) {
+            const cellAddress = { c: C, r: range.s.r };
+            const cellRef = XLSX.utils.encode_cell(cellAddress);
+            const cell = worksheet[cellRef];
+            headers.push(cell ? cell.v : undefined);
+          }
+          
+          // Get all rows for preview
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          const previewData = jsonData.slice(1).map(row => {
+            const obj = {};
+            headers.forEach((header, idx) => {
+              obj[header] = row[idx];
+            });
+            return obj;
+          });
+
+          resolve({ headers: headers.filter(h => h), previewData });
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      reader.onerror = (error) => reject(error);
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  const validateMappings = () => {
+    const errors = [];
+    const mappedFields = new Set(Object.values(mappings));
+
+    requiredFields.forEach(field => {
+      if (field.required && !mappedFields.has(field.id)) {
+        errors.push(`${field.label} is required`);
+      }
+    });
+
+    if (errors.length > 0) {
+      toast.error(`Missing required mappings: ${errors.join(', ')}`);
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleCellEdit = (rowIndex, header) => {
+    setEditingCell({ rowIndex, header });
+    setEditedValue(previewData[rowIndex][header] || '');
+  };
+
+  const handleCellSave = () => {
+    if (editingCell) {
+      const newData = [...previewData];
+      newData[editingCell.rowIndex][editingCell.header] = editedValue;
+      setPreviewData(newData);
+      setEditingCell(null);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!file) {
+      toast.error('Please select a file first');
+      return;
+    }
+
+    if (!validateMappings()) return;
+
+    try {
+      setLoading(true);
+      setUploadProgress(0);
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('column_mapping', JSON.stringify(mappings));
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_BASE_URL}${endpoint}`, true);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percentComplete = Math.round((event.loaded / event.total) * 100);
+          setUploadProgress(percentComplete);
+        }
+      };
+
+      xhr.onload = () => {
+        try {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            let responseData;
+            try {
+              responseData = JSON.parse(xhr.responseText);
+            } catch (e) {
+              responseData = xhr.responseText;
+            }
+            
+            toast.success('Upload completed successfully!');
+            setFile(null);
+            setUploadedHeaders([]);
+            setPreviewData([]);
+            setMappings({});
+            setUploadProgress(0);
+            
+            if (onUploadSuccess) {
+              onUploadSuccess(responseData);
+            }
+          } else {
+            // Try to parse error response
+            let errorData;
+            try {
+              errorData = JSON.parse(xhr.responseText);
+            } catch (e) {
+              errorData = xhr.responseText;
+            }
+            
+            // Construct meaningful error message
+            let errorMessage = 'Upload failed';
+            if (typeof errorData === 'object' && errorData !== null) {
+              if (errorData.detail) {
+                errorMessage = errorData.detail;
+              } else if (errorData.message) {
+                errorMessage = errorData.message;
+              } else if (errorData.non_field_errors) {
+                errorMessage = errorData.non_field_errors.join(', ');
+              } else {
+                // Handle field-specific errors
+                const fieldErrors = Object.entries(errorData)
+                  .map(([field, errors]) => `${field}: ${Array.isArray(errors) ? errors.join(', ') : errors}`)
+                  .join('; ');
+                if (fieldErrors) {
+                  errorMessage = fieldErrors;
+                }
+              }
+            } else if (typeof errorData === 'string') {
+              errorMessage = errorData;
+            }
+            
+            throw new Error(errorMessage);
+          }
+        } catch (error) {
+          console.error('Upload error:', error);
+          toast.error(`Upload failed: ${error.message}`);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      xhr.onerror = () => {
+        toast.error('Network error during file upload. Please try again.');
+        setLoading(false);
+        setUploadProgress(0);
+      };
+
+      xhr.send(formData);
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error(error.message || 'An unexpected error occurred');
+      setLoading(false);
+      setUploadProgress(0);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Drag and drop area */}
+      <div 
+        className={`border-2 border-dashed rounded-lg p-6 text-center ${dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}
+        onDragEnter={handleFileDrag}
+        onDragLeave={handleFileDrag}
+        onDragOver={handleFileDrag}
+        onDrop={handleFileDrop}
+      >
+        <div className="flex flex-col items-center justify-center space-y-2">
+          <FiUpload className="text-gray-400 text-2xl" />
+          <p className="text-s text-gray-600">
+            Drag and drop your Excel file here, or
+          </p>
+          <label className="cursor-pointer bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded text-s font-medium transition">
+            Browse Files
+            <input 
+              type="file" 
+              className="hidden" 
+              accept=".xlsx,.xls,.csv"
+              onChange={handleFileChange}
+            />
+          </label>
+          {description && (
+            <p className="mt-2 text-x text-gray-500 max-w-xl">
+              {description}
+            </p>
+          )}
+          {file && (
+            <div className="mt-2 text-s text-gray-700">
+              Selected file: <span className="font-medium">{file.name}</span>
+              <button 
+                onClick={() => {
+                  setFile(null);
+                  setUploadedHeaders([]);
+                  setPreviewData([]);
+                  setMappings({});
+                  setUploadProgress(0);
+                }} 
+                className="ml-2 text-red-500 hover:text-red-700"
+              >
+                <FiX className="inline" />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Column mapping section */}
+      {uploadedHeaders.length > 0 && (
+        <div className="mt-6 relative" ref={containerRef}>
+          <h4 className="text-s font-medium text-gray-700 mb-3">Map Columns</h4>
+          
+          {/* SVG for connections */}
+          <svg className="absolute w-full h-full top-0 left-0 pointer-events-none" style={{ zIndex: 1 }}>
+            {connections.map(conn => (
+              <path
+                key={conn.id}
+                d={conn.path}
+                stroke="#3b82f6"
+                strokeWidth="2"
+                fill="none"
+              />
+            ))}
+          </svg>
+
+          <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+            <div className="flex justify-between items-start">
+              {/* System Fields */}
+              <div className="w-5/12 pr-4">
+                <h5 className="text-x font-medium text-gray-500 uppercase tracking-wider mb-2">System Fields</h5>
+                <div className="space-y-2">
+                  {requiredFields.map(field => (
+                    <div 
+                      key={field.id}
+                      id={`backend-${field.id}`}
+                      draggable
+                      onDragStart={() => handleDragStart(field.id)}
+                      className={`p-3 border rounded-lg cursor-move flex justify-between items-center ${
+                        Object.values(mappings).includes(field.id)
+                          ? 'bg-blue-50 border-blue-200' 
+                          : 'bg-white border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className="font-medium text-gray-700">
+                        {field.label}
+                        {field.required && <span className="text-red-500 ml-1">*</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Excel Columns */}
+              <div className="w-5/12 pl-4">
+                <h5 className="text-x font-medium text-gray-500 uppercase tracking-wider mb-2">Excel Columns</h5>
+                <div className="space-y-2">
+                  {uploadedHeaders.map(header => {
+                    const systemField = mappings[header];
+                    return (
+                      <div
+                        key={header}
+                        id={`uploaded-${header}`}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, header)}
+                        className={`p-3 border rounded-lg ${
+                          systemField
+                            ? 'bg-green-50 border-green-200'
+                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                        } ${!systemField && 'cursor-pointer'}`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-700">{header}</span>
+                          {systemField && (
+                            <button 
+                              onClick={() => removeMapping(header)}
+                              className="text-red-500 hover:text-red-700 p-1"
+                            >
+                              <FiX />
+                            </button>
+                          )}
+                        </div>
+                        {systemField && (
+                          <div className="text-x text-green-600 mt-1">
+                            Mapped to: {requiredFields.find(f => f.id === systemField)?.label}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload progress */}
+      {uploadProgress > 0 && (
+        <div className="w-full bg-gray-200 rounded-full h-2.5">
+          <div 
+            className="bg-blue-600 h-2.5 rounded-full" 
+            style={{ width: `${uploadProgress}%` }}
+          ></div>
+        </div>
+      )}
+
+      {/* Data preview */}
+      {previewData.length > 0 && (
+        <div className="mt-6">
+          <h4 className="text-s font-medium text-gray-700 mb-3">
+            Data Preview (Showing {Math.min(visibleRows, previewData.length)} of {previewData.length} rows)
+          </h4>
+          <div 
+            className="overflow-x-auto border border-gray-200 rounded"
+            style={{ maxHeight: '400px', overflowY: 'auto' }}
+            ref={previewTableRef}
+          >
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  {uploadedHeaders.map(header => (
+                    <th 
+                      key={header} 
+                      className="px-3 py-2 text-left text-x font-medium text-gray-500 uppercase tracking-wider"
+                    >
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {previewData.slice(0, visibleRows).map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {uploadedHeaders.map(header => (
+                      <td 
+                        key={`${rowIndex}-${header}`} 
+                        className="px-3 py-2 whitespace-nowrap text-s text-gray-500"
+                        onClick={() => handleCellEdit(rowIndex, header)}
+                      >
+                        {editingCell?.rowIndex === rowIndex && editingCell?.header === header ? (
+                          <input
+                            type="text"
+                            value={editedValue}
+                            onChange={(e) => setEditedValue(e.target.value)}
+                            onBlur={handleCellSave}
+                            onKeyDown={(e) => e.key === 'Enter' && handleCellSave()}
+                            autoFocus
+                            className="w-full p-1 border border-blue-300 rounded"
+                          />
+                        ) : (
+                          row[header] || '-'
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Upload button */}
+      <div className="flex justify-end">
+        <button
+          onClick={handleUpload}
+          disabled={!file || loading}
+          className={`px-4 py-2 rounded-lg text-s font-medium transition-colors ${
+            !file || loading
+              ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+              : 'bg-blue-600 text-white hover:bg-blue-700'
+          }`}
+        >
+          {loading ? (
+            <span className="flex items-center">
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              {uploadProgress > 0 ? `Uploading (${uploadProgress}%)` : 'Uploading...'}
+            </span>
+          ) : `Upload ${title}`}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const GLCreateForm = ({ onCreateSuccess }) => {
+  const { token } = useContext(AuthContext);
+
+  // 1. chart_of_accounts (similar to GL master)
+  const chartOfAccountsFields = [
+    { id: 'general_ledger_code', label: 'general_ledger_code', required: true, aliases: ['gl_code', 'account_code'] },
+    { id: 'account_name', label: 'account_name', required: true, aliases: ['gl_name', 'account_name'] },
+    { id: 'category', label: 'category', required: true },
+    { id: 'tags', label: 'tags', required: false }
+  ];
+
+  // 2. cost_centers
+  const costCenterFields = [
+    { id: 'cost_center_code', label: 'cost_center_code', required: true, aliases: ['cost_center_id', 'cc_code'] },
+    { id: 'cost_center_name', label: 'cost_center_name', required: true, aliases: ['cc_name'] },
+    { id: 'department', label: 'department', required: false },
+    { id: 'description', label: 'description', required: false }
+  ];
+
+  // 3. customers
+  const customersFields = [
+    { id: 'customer_code', label: 'customer_code', required: true, aliases: ['customer_id', 'cust_code'] },
+    { id: 'customer_name', label: 'customer_name', required: true, aliases: ['name'] },
+    { id: 'email', label: 'email', required: false, aliases: ['email_id', 'customer_email'] },
+    { id: 'phone', label: 'phone', required: false, aliases: ['mobile', 'mobile_number', 'phone_number'] },
+    { id: 'address', label: 'address', required: false }
+  ];
+
+  // 4. departments
+  const departmentsFields = [
+    { id: 'department_code', label: 'department_code', required: true, aliases: ['dept_code'] },
+    { id: 'department_name', label: 'department_name', required: true, aliases: ['dept_name'] },
+    { id: 'manager', label: 'manager', required: false },
+    { id: 'description', label: 'description', required: false }
+  ];
+
+  // 5. entities
+  const entitiesFields = [
+    { id: 'entity_code', label: 'entity_code', required: true, aliases: ['company_code'] },
+    { id: 'entity_name', label: 'entity_name', required: true, aliases: ['company_name'] },
+    { id: 'country', label: 'country', required: false },
+    { id: 'currency', label: 'currency', required: false }
+  ];
+
+  // 6. general_ledger_transactions (same idea as your GL Transactions)
+  const glTransactionFields = [
+    { id: 'date', label: 'Transaction Date', required: true, aliases: ['transaction_date', 'posting_date'] },
+    { id: 'general_ledger_code', label: 'GL Code', required: true, aliases: ['gl_account_number', 'account_code'] },
+    { id: 'account_name', label: 'Account Name', required: true, aliases: ['gl_account_name'] },
+    { id: 'category', label: 'Category', required: false },
+    { id: 'amount', label: 'Amount', required: false, aliases: ['final_amount', 'value'] },
+    { id: 'single_col_debit_credit', label: 'Debit/Credit Flag', required: false, aliases: ['debit_credit_flag', 'dr_cr', 'debit_credit_flagt'] }
+  ];
+
+  // 7. profit_centers
+  const profitCenterFields = [
+    { id: 'profit_center_code', label: 'profit_center_code', required: true, aliases: ['pc_code'] },
+    { id: 'profit_center_name', label: 'profit_center_name', required: true, aliases: ['pc_name'] },
+    { id: 'business_unit', label: 'business_unit', required: false },
+    { id: 'description', label: 'description', required: false }
+  ];
+
+  // 8. trial_balance
+  const trialBalanceFields = [
+    { id: 'general_ledger_code', label: 'general_ledger_code', required: true, aliases: ['gl_code', 'account_code'] },
+    { id: 'account_name', label: 'account_name', required: true, aliases: ['gl_name'] },
+    { id: 'opening_balance', label: 'opening_balance', required: false, aliases: ['opening'] },
+    { id: 'debit', label: 'debit', required: false },
+    { id: 'credit', label: 'credit', required: false },
+    { id: 'closing_balance', label: 'closing_balance', required: false, aliases: ['closing'] }
+  ];
+
+  // 9. vendors
+  const vendorsFields = [
+    { id: 'vendor_code', label: 'vendor_code', required: true, aliases: ['vendor_id', 'supp_code'] },
+    { id: 'vendor_name', label: 'vendor_name', required: true, aliases: ['name', 'supplier_name'] },
+    { id: 'email', label: 'email', required: false, aliases: ['email_id', 'vendor_email'] },
+    { id: 'phone', label: 'phone', required: false, aliases: ['mobile', 'mobile_number', 'phone_number'] },
+    { id: 'address', label: 'address', required: false }
+  ];
+
+  return (
+    <div className="space-y-8">
+      {/* 1. Chart of Accounts */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+          <h3 className="text-s font-medium text-gray-700">Upload Chart of Accounts</h3>
+          <p className="text-x text-gray-500 mt-1">
+            Upload your chart_of_accounts master Excel file and map GL codes, names, categories, and tags.
+          </p>
+        </div>
+        <div className="p-4">
+          <GLExcelUpload 
+            token={token}
+            onUploadSuccess={onCreateSuccess}
+            endpoint="/api/v1/company/financial/chart-of-accounts"
+            title="Chart of Accounts"
+            description="Supported: .xlsx, .xls, .csv. Make sure each row represents one GL account."
+            requiredFields={chartOfAccountsFields}
+          />
+        </div>
+      </div>
+
+      {/* 2. Cost Centers */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+          <h3 className="text-s font-medium text-gray-700">Upload Cost Centers</h3>
+          <p className="text-x text-gray-500 mt-1">
+            Upload cost_centers data to maintain your organizational cost structure.
+          </p>
+        </div>
+        <div className="p-4">
+          <GLExcelUpload 
+            token={token}
+            onUploadSuccess={onCreateSuccess}
+            endpoint="/api/v1/company/financial/cost-centers"
+            title="Cost Centers"
+            description="Include cost_center_code and cost_center_name columns for best results."
+            requiredFields={costCenterFields}
+          />
+        </div>
+      </div>
+
+      {/* 3. Customers */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+          <h3 className="text-s font-medium text-gray-700">Upload Customers</h3>
+          <p className="text-x text-gray-500 mt-1">
+            Upload customers master Excel file with codes, names, and contact details.
+          </p>
+        </div>
+        <div className="p-4">
+          <GLExcelUpload 
+            token={token}
+            onUploadSuccess={onCreateSuccess}
+            endpoint="/api/v1/company/financial/customers"
+            title="Customers"
+            description="Typical columns: customer_code, customer_name, email, phone, address."
+            requiredFields={customersFields}
+          />
+        </div>
+      </div>
+
+      {/* 4. Departments */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+          <h3 className="text-s font-medium text-gray-700">Upload Departments</h3>
+          <p className="text-x text-gray-500 mt-1">
+            Upload departments and their codes for better reporting and mapping.
+          </p>
+        </div>
+        <div className="p-4">
+          <GLExcelUpload 
+            token={token}
+            onUploadSuccess={onCreateSuccess}
+            endpoint="/api/v1/company/financial/departments"
+            title="Departments"
+            description="Include department_code and department_name columns."
+            requiredFields={departmentsFields}
+          />
+        </div>
+      </div>
+
+      {/* 5. Entities */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+          <h3 className="text-s font-medium text-gray-700">Upload Entities</h3>
+          <p className="text-x text-gray-500 mt-1">
+            Upload legal entities / companies for your group structure.
+          </p>
+        </div>
+        <div className="p-4">
+          <GLExcelUpload 
+            token={token}
+            onUploadSuccess={onCreateSuccess}
+            endpoint="/api/v1/company/financial/entities"
+            title="Entities"
+            description="Example columns: entity_code, entity_name, country, currency."
+            requiredFields={entitiesFields}
+          />
+        </div>
+      </div>
+
+      {/* 6. General Ledger Transactions */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+          <h3 className="text-s font-medium text-gray-700">Upload GL Transactions</h3>
+          <p className="text-x text-gray-500 mt-1">
+            Upload general_ledger_transactions data. Drag fields to map columns.
+          </p>
+        </div>
+        <div className="p-4">
+          <GLExcelUpload 
+            token={token}
+            onUploadSuccess={onCreateSuccess}
+            endpoint="/api/v1/company/financial/upload-gl/"
+            title="GL Transactions"
+            description="Include transaction_date, GL code, amount, and debit/credit flag if available."
+            requiredFields={glTransactionFields}
+          />
+        </div>
+      </div>
+
+      {/* 7. Profit Centers */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+          <h3 className="text-s font-medium text-gray-700">Upload Profit Centers</h3>
+          <p className="text-x text-gray-500 mt-1">
+            Upload profit_centers for P&amp;L-based reporting and analysis.
+          </p>
+        </div>
+        <div className="p-4">
+          <GLExcelUpload 
+            token={token}
+            onUploadSuccess={onCreateSuccess}
+            endpoint="/api/v1/company/financial/profit-centers"
+            title="Profit Centers"
+            description="Example columns: profit_center_code, profit_center_name, business_unit."
+            requiredFields={profitCenterFields}
+          />
+        </div>
+      </div>
+
+      {/* 8. Trial Balance */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+          <h3 className="text-s font-medium text-gray-700">Upload Trial Balance</h3>
+          <p className="text-x text-gray-500 mt-1">
+            Upload trial_balance data for a specific period with opening, debit, credit, and closing balances.
+          </p>
+        </div>
+        <div className="p-4">
+          <GLExcelUpload 
+            token={token}
+            onUploadSuccess={onCreateSuccess}
+            endpoint="/api/v1/company/financial/trial-balance"
+            title="Trial Balance"
+            description="Typical columns: general_ledger_code, account_name, opening_balance, debit, credit, closing_balance."
+            requiredFields={trialBalanceFields}
+          />
+        </div>
+      </div>
+
+      {/* 9. Vendors */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+          <h3 className="text-s font-medium text-gray-700">Upload Vendors</h3>
+          <p className="text-x text-gray-500 mt-1">
+            Upload vendors / suppliers master Excel file with codes, names, and contact details.
+          </p>
+        </div>
+        <div className="p-4">
+          <GLExcelUpload 
+            token={token}
+            onUploadSuccess={onCreateSuccess}
+            endpoint="/api/v1/company/financial/vendors"
+            title="Vendors"
+            description="Typical columns: vendor_code, vendor_name, email, phone, address."
+            requiredFields={vendorsFields}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default GLCreateForm;

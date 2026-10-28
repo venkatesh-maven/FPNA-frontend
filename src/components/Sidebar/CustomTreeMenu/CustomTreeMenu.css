@@ -1,0 +1,117 @@
+.custom-tree-menu {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-size: 14px;
+  user-select: none;
+  padding: 8px 0;
+}
+
+.tree-item {
+  position: relative;
+}
+
+.tree-item-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin: 2px 0;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.tree-item-header:hover {
+  background-color: #f5f8ff;
+}
+
+.tree-item-header.has-children {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+/* Connector lines */
+.vertical-connector {
+  position: absolute;
+  left: 24px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: #e2e8f0;
+  z-index: 1;
+}
+
+.vertical-connector.half-height {
+  bottom: 50%;
+}
+
+.horizontal-connector {
+  position: absolute;
+  left: 24px;
+  top: 50%;
+  width: 12px;
+  height: 1px;
+  background-color: #e2e8f0;
+  z-index: 1;
+}
+
+/* Icons and spacing */
+.tree-chevron {
+  margin-right: 8px;
+  color: #94a3b8;
+  flex-shrink: 0;
+  width: 16px;
+}
+
+.tree-chevron-spacer {
+  width: 24px;
+  display: inline-block;
+}
+
+.tree-icon {
+  margin-right: 8px;
+  color: #64748b;
+  flex-shrink: 0;
+  width: 18px;
+}
+
+/* Links and labels */
+.tree-link {
+  color: #334155;
+  text-decoration: none;
+  flex-grow: 1;
+  transition: color 0.2s, background-color 0.2s; /* Changed: Added background-color transition */
+}
+
+.tree-link:hover {
+  color: #2563eb;
+}
+
+.tree-link.active {
+  color: #287dad; /* Changed: Used text-sky-900 (#0c4a6e) for active text color */
+  /* background-color: #dbeafe;  */
+  font-weight: 800;
+}
+
+/* Style for parent items of active path */
+.tree-item-header.has-children:has(.tree-link.active) {
+  background-color: #dbeafe;
+}
+
+/* Children container */
+.tree-children {
+  margin-left: 24px;
+  padding-left: 12px;
+  border-left: 1px dashed #e2e8f0;
+}
+
+/* Indentation for different levels */
+.tree-item.level-1 .tree-item-header {
+  padding-left: 36px;
+}
+
+.tree-item.level-2 .tree-item-header {
+  padding-left: 48px;
+}
+
+.tree-item.level-3 .tree-item-header {
+  padding-left: 60px;
+}

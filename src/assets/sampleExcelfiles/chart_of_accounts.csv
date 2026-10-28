@@ -1,0 +1,11 @@
+account_id,account_code,account_name,account_type,parent_account_id,is_active
+100,101,Asset Accounts,Asset,,TRUE
+102,102,Cash,Asset,100,TRUE
+103,103,Accounts Receivable,Asset,100,TRUE
+104,104,Inventory,Asset,100,TRUE
+105,105,Prepaid Expenses,Asset,100,TRUE
+106,106,Fixed Assets,Asset,100,TRUE
+107,107,Accumulated Depreciation,Asset,100,TRUE
+200,201,Liability Accounts,Liability,,TRUE
+202,202,Accounts Payable,Liability,200,TRUE
+203,203,Accrued Expenses,Liability,200,TRUE

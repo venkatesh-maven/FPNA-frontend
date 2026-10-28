@@ -1,0 +1,556 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+.analytics-table-scroll {
+  background: #ffffff !important;
+  border: 1px solid #bae6fd !important;
+  border-radius: 0.5rem !important;
+  scrollbar-width: thin;
+  scrollbar-color: #0c4a6e #e0f2fe;
+  scroll-behavior: smooth;
+}
+
+.analytics-table-scroll::-webkit-scrollbar {
+  display: block;
+  width: 6px;
+  height: 6px;
+}
+
+.analytics-table-scroll::-webkit-scrollbar-track {
+  background: #e0f2fe;
+  border-radius: 999px;
+}
+
+.analytics-table-scroll::-webkit-scrollbar-thumb {
+  background: #0c4a6e;
+  border-radius: 999px;
+}
+
+.analytics-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: #075985;
+}
+
+.report-table-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #0c4a6e #e0f2fe;
+  scroll-behavior: smooth;
+}
+
+.report-table-scroll::-webkit-scrollbar {
+  display: block;
+  width: 6px;
+  height: 6px;
+}
+
+.report-table-scroll::-webkit-scrollbar-track {
+  background: #e0f2fe;
+  border-radius: 999px;
+}
+
+.report-table-scroll::-webkit-scrollbar-thumb {
+  background: #0c4a6e;
+  border-radius: 999px;
+}
+
+.report-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: #075985;
+}
+
+.analytics-table-scroll table {
+  width: 100% !important;
+  min-width: 1100px;
+  border-collapse: collapse !important;
+  font-size: 0.75rem !important;
+  color: #075985 !important;
+}
+
+.analytics-table-scroll thead,
+.analytics-table-scroll thead tr,
+.analytics-table-scroll thead th {
+  background: #0c4a6e !important;
+  color: #ffffff !important;
+}
+
+.analytics-table-scroll thead {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 20 !important;
+}
+
+.analytics-table-scroll thead th {
+  padding: 0.75rem !important;
+  /* font-size: 0.75rem !important; */
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+  text-transform: uppercase;
+  white-space: nowrap !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+.analytics-table-scroll thead tr + tr,
+.analytics-table-scroll thead tr + tr th {
+  background: #075985 !important;
+}
+
+.analytics-table-scroll tbody tr {
+  border-bottom: 1px solid #e0f2fe !important;
+}
+
+.analytics-table-scroll tbody tr:hover td {
+  background: white !important;
+}
+
+.analytics-table-scroll tbody td,
+.analytics-table-scroll tfoot td {
+  padding: 0.75rem !important;
+  color: #075985 !important;
+  white-space: nowrap !important;
+  border-color: #e0f2fe !important;
+}
+
+.analytics-table-scroll tbody td:first-child {
+  background: white !important;
+  color: #0c4a6e !important;
+  font-weight: 700 !important;
+}
+
+.analytics-table-scroll thead th:first-child,
+.analytics-table-scroll tbody td:first-child,
+.analytics-table-scroll tfoot td:first-child {
+  position: sticky !important;
+  left: 0 !important;
+}
+
+.analytics-table-scroll thead th:first-child {
+  z-index: 30 !important;
+  background: #0c4a6e !important;
+}
+
+.analytics-table-scroll tbody td:first-child {
+  z-index: 10 !important;
+}
+
+.analytics-table-scroll tfoot tr,
+.analytics-table-scroll tfoot td {
+  background: #0c4a6e !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+.analytics-table-scroll input,
+.analytics-table-scroll select,
+.analytics-table-scroll textarea,
+.analytics-table-scroll [contenteditable="true"] {
+  color: #075985 !important;
+  border-color: #bae6fd !important;
+}
+
+/* Planning Engine screens: text-x / text-s were never defined as Tailwind
+   utilities, so every control using them fell back to the inherited 16px and
+   pushed the table below the fold. Scoped here so other screens are unchanged. */
+.planning-compact .text-x {
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+.planning-compact .text-s {
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+/* Table cells keep the type scale the table rules above already give them. */
+.planning-compact table .text-x,
+.planning-compact table .text-s {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.forecasting-pnl-theme {
+  min-height: 100vh;
+  background: #f0f9ff !important;
+  color: #075985 !important;
+  font-family: "Poppins", sans-serif !important;
+}
+
+.forecasting-pnl-theme h1,
+.forecasting-pnl-theme h2,
+.forecasting-pnl-theme h3,
+.forecasting-pnl-theme h4,
+.forecasting-pnl-theme strong {
+  color: #0c4a6e !important;
+}
+
+.forecasting-pnl-theme p,
+.forecasting-pnl-theme span,
+.forecasting-pnl-theme label,
+.forecasting-pnl-theme div {
+  border-color: #bae6fd;
+}
+
+.forecasting-pnl-theme [class*="bg-slate-"],
+.forecasting-pnl-theme [class*="bg-gray-"],
+.forecasting-pnl-theme [class*="bg-blue-"],
+.forecasting-pnl-theme [class*="bg-indigo-"],
+.forecasting-pnl-theme [class*="bg-purple-"] {
+  background-color: white !important;
+}
+
+.forecasting-pnl-theme [class*="text-slate-"],
+.forecasting-pnl-theme [class*="text-gray-"],
+.forecasting-pnl-theme [class*="text-blue-"],
+.forecasting-pnl-theme [class*="text-indigo-"],
+.forecasting-pnl-theme [class*="text-purple-"] {
+  color: #075985 !important;
+}
+
+.forecasting-pnl-theme [class*="border-slate-"],
+.forecasting-pnl-theme [class*="border-gray-"],
+.forecasting-pnl-theme [class*="border-blue-"],
+.forecasting-pnl-theme [class*="border-indigo-"],
+.forecasting-pnl-theme [class*="border-purple-"] {
+  border-color: #bae6fd !important;
+}
+
+.forecasting-pnl-theme > div:first-child:not(.fixed),
+.forecasting-pnl-theme .forecasting-page-header,
+.forecasting-pnl-theme [style*="linear-gradient"] {
+  background: #0c4a6e !important;
+  color: #ffffff !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 4px 12px rgba(12, 74, 110, 0.18) !important;
+}
+
+.forecasting-pnl-theme > div:first-child:not(.fixed) *,
+.forecasting-pnl-theme .forecasting-page-header *,
+.forecasting-pnl-theme [style*="linear-gradient"] * {
+  color: #ffffff !important;
+}
+
+.forecasting-pnl-theme > div:first-child:not(.fixed) select,
+.forecasting-pnl-theme > div:first-child:not(.fixed) option,
+.forecasting-pnl-theme .forecasting-page-header select,
+.forecasting-pnl-theme .forecasting-page-header option,
+.forecasting-pnl-theme [style*="linear-gradient"] select,
+.forecasting-pnl-theme [style*="linear-gradient"] option {
+  background: #ffffff !important;
+  color: #075985 !important;
+}
+
+.forecasting-pnl-theme > div:first-child:not(.fixed) select *,
+.forecasting-pnl-theme .forecasting-page-header select *,
+.forecasting-pnl-theme [style*="linear-gradient"] select * {
+  color: #075985 !important;
+}
+
+.forecasting-pnl-theme table:not(.recharts-surface table) {
+  border-collapse: collapse;
+  /* font-size: 0.75rem; */
+}
+
+.forecasting-pnl-theme table:not(.recharts-surface table) thead tr,
+.forecasting-pnl-theme table:not(.recharts-surface table) thead th {
+  background: #0c4a6e !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+.forecasting-pnl-theme table:not(.recharts-surface table) thead tr + tr,
+.forecasting-pnl-theme table:not(.recharts-surface table) thead tr + tr th {
+  background: #075985 !important;
+}
+
+.forecasting-pnl-theme table:not(.recharts-surface table) tbody td {
+  color: #075985 !important;
+  border-color: #e0f2fe !important;
+}
+
+.forecasting-pnl-theme table:not(.recharts-surface table) tbody td:first-child {
+  background: #f0f9ff !important;
+  color: #0c4a6e !important;
+  font-weight: 700;
+}
+
+.forecasting-pnl-theme table:not(.recharts-surface table) tbody tr:hover td {
+  background: #f0f9ff !important;
+}
+
+.forecasting-pnl-theme .bg-white,
+.forecasting-pnl-theme [class*="rounded-xl"],
+.forecasting-pnl-theme [class*="rounded-2xl"] {
+  border-color: #bae6fd !important;
+}
+
+.forecasting-pnl-theme button {
+  color: #075985 !important;
+  border-color: #bae6fd !important;
+}
+
+.forecasting-pnl-theme button[class*="bg-sky-"],
+.forecasting-pnl-theme button[class*="bg-blue-"],
+.forecasting-pnl-theme button[class*="bg-indigo-"],
+.forecasting-pnl-theme button[class*="bg-emerald-"],
+.forecasting-pnl-theme button[class*="bg-slate-"] {
+  background: #0c4a6e !important;
+  color: #ffffff !important;
+}
+
+.forecasting-pnl-theme button[class*="bg-red-"] {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+.forecasting-pnl-theme input,
+.forecasting-pnl-theme select,
+.forecasting-pnl-theme textarea,
+.forecasting-pnl-theme [contenteditable="true"] {
+  background: #ffffff !important;
+  color: #075985 !important;
+  border-color: #bae6fd !important;
+}
+
+.forecasting-pnl-theme input:focus,
+.forecasting-pnl-theme select:focus,
+.forecasting-pnl-theme textarea:focus,
+.forecasting-pnl-theme [contenteditable="true"]:focus {
+  border-color: #0c4a6e !important;
+  box-shadow: 0 0 0 2px #bae6fd !important;
+}
+
+.forecasting-pnl-theme [role="tab"],
+.forecasting-pnl-theme .tabs button,
+.forecasting-pnl-theme button[aria-selected="true"] {
+  color: #075985 !important;
+}
+
+.forecasting-pnl-theme [class*="shadow"] {
+  box-shadow: 0 2px 10px rgba(12, 74, 110, 0.12) !important;
+}
+
+.forecasting-pnl-theme .pnl-root {
+  background: #f0f9ff !important;
+}
+
+.forecasting-pnl-theme .pnl-section-card,
+.forecasting-pnl-theme .pnl-kpi-card {
+  background: #ffffff !important;
+  border: 1px solid #bae6fd !important;
+  box-shadow: 0 2px 10px rgba(12, 74, 110, 0.12) !important;
+}
+
+.forecasting-pnl-theme .pnl-section-card > div:first-child,
+.forecasting-pnl-theme .pnl-section-card > button:first-child {
+  background: #ffffff !important;
+  color: #075985 !important;
+}
+
+.forecasting-pnl-theme .pnl-section-card > div:first-child *,
+.forecasting-pnl-theme .pnl-section-card > button:first-child * {
+  color: #075985 !important;
+}
+
+.forecasting-pnl-theme .pnl-th {
+  background: #0c4a6e !important;
+  color: #ffffff !important;
+}
+
+.forecasting-pnl-theme .pnl-td {
+  color: #075985 !important;
+}
+
+/* ── Revenue Forecast summary table: compact density ────────────────────
+   The page-wide .forecasting-pnl-theme rules apply !important styles to
+   inputs/cells, which override Tailwind utility heights. Pin the row +
+   input dimensions here so the table reliably shows ~12+ rows in viewport. */
+.revenue-forecast-page .rf-row td {
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+  line-height: 1.3 !important;
+  vertical-align: middle;
+  font-size: 13px !important;
+}
+.revenue-forecast-page .rf-row {
+  height: 40px;
+}
+.revenue-forecast-page .rf-row input[type="number"] {
+  height: 28px !important;
+  padding-top: 3px !important;
+  padding-bottom: 3px !important;
+  font-size: 13px !important;
+  line-height: 1.1 !important;
+}
+.revenue-forecast-page table thead th {
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+  line-height: 1.2 !important;
+  font-size: 12px !important;
+}
+.revenue-forecast-page table tfoot td {
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+  font-size: 13px !important;
+}
+/* Hide the spinner buttons on number inputs — they steal horizontal space
+   and add nothing for currency entry. */
+.revenue-forecast-page .rf-row input[type="number"]::-webkit-outer-spin-button,
+.revenue-forecast-page .rf-row input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.revenue-forecast-page .rf-row input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* ── Expense Forecast summary table: same density treatment as revenue ── */
+.forecasting-pnl-theme .ef-row td {
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+  line-height: 1.3 !important;
+  vertical-align: middle;
+  font-size: 13px !important;
+}
+.forecasting-pnl-theme .ef-row {
+  height: 40px;
+}
+.forecasting-pnl-theme .ef-row input[type="number"] {
+  height: 28px !important;
+  padding-top: 3px !important;
+  padding-bottom: 3px !important;
+  font-size: 13px !important;
+  line-height: 1.1 !important;
+}
+.forecasting-pnl-theme table thead th {
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+  line-height: 1.2 !important;
+  font-size: 12px !important;
+}
+.forecasting-pnl-theme table tfoot td {
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+  font-size: 13px !important;
+}
+.forecasting-pnl-theme .ef-row input[type="number"]::-webkit-outer-spin-button,
+.forecasting-pnl-theme .ef-row input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.forecasting-pnl-theme .ef-row input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+
+/* styles.css */
+.animate-shake-once {
+  animation: shake 0.5s ease-in-out 1; 
+}
+
+@keyframes shake {
+  0% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  50% {
+    transform: translateX(5px);
+  }
+  75% {
+    transform: translateX(-5px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* Keep the existing pop animation if you still want it */
+.animate-pop {
+  animation: pop 0.3s ease-in-out;
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+
+/* Import Poppins with weights 400, 500, 600, 700 */
+/* Apply Poppins globally */
+body {
+  font-family: 'Poppins', sans-serif;
+  -webkit-font-smoothing: antialiased; /* Smoother text */
+}
+
+/* Optional: Utility classes */
+.font-light { font-weight: 300; }
+.font-regular { font-weight: 400; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+
+
+button{
+  cursor: pointer !important
+}
+
+/* Excel-style column resizing (utils/tableColumnResize.js): a grip on the
+   right edge of every header cell, a faint divider on header hover, a solid
+   one while dragging. */
+.col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 5;
+  touch-action: none;
+  user-select: none;
+}
+.col-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 18%;
+  bottom: 18%;
+  right: 1px;
+  width: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+th:hover > .col-resize-handle::after {
+  opacity: 0.3;
+}
+.col-resize-handle:hover::after,
+.col-resize-handle.is-active::after {
+  opacity: 0.9;
+}
+html.col-resizing,
+html.col-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+/* Once resized, a column narrower than its content clips it like Excel. */
+table[data-col-resized] > thead > tr > th,
+table[data-col-resized] > tbody > tr > td,
+table[data-col-resized] > tfoot > tr > td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media print {
+  .col-resize-handle {
+    display: none;
+  }
+}

@@ -1,0 +1,24 @@
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1.1);
+  }
+}
+
+.icon-container:hover .icon-animate {
+  animation: pop 0.3s ease-in-out forwards;
+}
+
+.animate-pop {
+  animation: pop 0.3s ease-in-out forwards;
+}
+
+/* Smooth transitions for sidebar */
+.sidebar-transition {
+  transition: all 0.3s ease-in-out;
+}
