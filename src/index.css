@@ -362,34 +362,39 @@
   color: #075985 !important;
 }
 
-/* ── Revenue Forecast summary table: compact density ────────────────────
+/* ── Revenue + Cashflow Forecast summary tables: compact density ────────────────────
    The page-wide .forecasting-pnl-theme rules apply !important styles to
    inputs/cells, which override Tailwind utility heights. Pin the row +
    input dimensions here so the table reliably shows ~12+ rows in viewport. */
-.revenue-forecast-page .rf-row td {
+.revenue-forecast-page .rf-row td,
+.cashflow-forecast-page .rf-row td {
   padding-top: 6px !important;
   padding-bottom: 6px !important;
   line-height: 1.3 !important;
   vertical-align: middle;
   font-size: 13px !important;
 }
-.revenue-forecast-page .rf-row {
+.revenue-forecast-page .rf-row,
+.cashflow-forecast-page .rf-row {
   height: 40px;
 }
-.revenue-forecast-page .rf-row input[type="number"] {
+.revenue-forecast-page .rf-row input[type="number"],
+.cashflow-forecast-page .rf-row input[type="number"] {
   height: 28px !important;
   padding-top: 3px !important;
   padding-bottom: 3px !important;
   font-size: 13px !important;
   line-height: 1.1 !important;
 }
-.revenue-forecast-page table thead th {
+.revenue-forecast-page table thead th,
+.cashflow-forecast-page table thead th {
   padding-top: 8px !important;
   padding-bottom: 8px !important;
   line-height: 1.2 !important;
   font-size: 12px !important;
 }
-.revenue-forecast-page table tfoot td {
+.revenue-forecast-page table tfoot td,
+.cashflow-forecast-page table tfoot td {
   padding-top: 8px !important;
   padding-bottom: 8px !important;
   font-size: 13px !important;
@@ -397,11 +402,14 @@
 /* Hide the spinner buttons on number inputs — they steal horizontal space
    and add nothing for currency entry. */
 .revenue-forecast-page .rf-row input[type="number"]::-webkit-outer-spin-button,
-.revenue-forecast-page .rf-row input[type="number"]::-webkit-inner-spin-button {
+.cashflow-forecast-page .rf-row input[type="number"]::-webkit-outer-spin-button,
+.revenue-forecast-page .rf-row input[type="number"]::-webkit-inner-spin-button,
+.cashflow-forecast-page .rf-row input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
-.revenue-forecast-page .rf-row input[type="number"] {
+.revenue-forecast-page .rf-row input[type="number"],
+.cashflow-forecast-page .rf-row input[type="number"] {
   -moz-appearance: textfield;
 }
 

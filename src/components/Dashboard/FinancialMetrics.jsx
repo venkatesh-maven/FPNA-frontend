@@ -47,12 +47,42 @@ const DEFAULT_KPI_QUESTIONS = [
   "What could be driving this number?",
 ];
 
-const KPICard = ({ title, displayValue, change, isPositive, icon, year }) => {
+// For these KPIs a decrease is the favourable direction (shown green).
+const LOWER_IS_BETTER = new Set(["expenses"]);
+// Direction carries no good/bad meaning — always shown neutral.
+const NEUTRAL_KPIS = new Set(["headcount"]);
+
+const KPICard = ({ title, displayValue, change, changePct, prevLabel, prevDetail, prevDisplay, prevLoading, note, icon, year }) => {
   const niceTitle = title.replace(/_/g, " ").replace(/([A-Z])/g, " $1");
+
+  // changePct may be absent when callers pass only a change string (e.g. "+5%").
+  const pct = Number.isFinite(changePct) ? changePct : parseFloat(String(change ?? "").replace(/[^\d.+-]/g, ""));
+  const hasChange = change != null && change !== "" && Number.isFinite(pct);
+  const direction = !hasChange || pct === 0 ? 0 : pct > 0 ? 1 : -1;
+  const favourable = LOWER_IS_BETTER.has(title) ? direction < 0 : direction > 0;
+  // `note` = a ready-made status line (e.g. "81.0% of FY forecast") with its own tone.
+  const colorClass = note
+    ? note.tone === "good"
+      ? "text-green-500"
+      : note.tone === "bad"
+        ? "text-red-500"
+        : "text-gray-500"
+    : direction === 0 || NEUTRAL_KPIS.has(title)
+      ? "text-gray-500"
+      : favourable
+        ? "text-green-500"
+        : "text-red-500";
+  const arrow = direction > 0 ? "↑" : direction < 0 ? "↓" : "";
+  const periodLabel = prevLabel ? `vs ${prevLabel}` : "vs last period";
 
   const context =
     `KPI tile "${niceTitle}"${year ? ` for fiscal year ${year}` : ""}: ` +
-    `current value = ${displayValue}, change = ${change || "+0%"} vs last period. ` +
+    `current value = ${displayValue}, ` +
+    (note
+      ? `${note.text}${note.tooltip ? ` (${note.tooltip})` : ""}. `
+      : hasChange
+      ? `change = ${change} ${periodLabel}${prevDisplay ? ` (${prevDetail || prevLabel} value = ${prevDisplay})` : ""}. `
+      : `no prior-period data available for comparison. `) +
     `Use ONLY this as the source of truth.`;
 
   return (
@@ -82,10 +112,28 @@ const KPICard = ({ title, displayValue, change, isPositive, icon, year }) => {
           {/* ✅ always formatted value (with symbol + K/M) */}
           <p className="text-s font-bold text-sky-900 mt-1">{displayValue}</p>
 
-          <div className={`flex items-center mt-2 ${isPositive ? "text-green-500" : "text-red-500"}`}>
-            <span className="text-[10px] font-medium">
-              {change} {isPositive ? "↑" : "↓"} vs last period
-            </span>
+          <div className={`flex items-center mt-2 ${colorClass}`}>
+            {note ? (
+              <span
+                className="text-[10px] font-medium"
+                {...(note.tooltip ? { "data-tooltip-id": "ai-tooltip", "data-tooltip-content": note.tooltip } : {})}
+              >
+                {note.text}
+              </span>
+            ) : hasChange ? (
+              <span
+                className="text-[10px] font-medium"
+                {...(prevDisplay ? { "data-tooltip-id": "ai-tooltip", "data-tooltip-content": `${prevDetail || prevLabel}: ${prevDisplay}` } : {})}
+              >
+                {change} {arrow} {periodLabel}
+              </span>
+            ) : prevLoading ? (
+              <span className="text-[10px] font-medium">comparing {periodLabel}…</span>
+            ) : (
+              <span className="text-[10px] font-medium">
+                — no {prevLabel || "prior period"} data
+              </span>
+            )}
           </div>
         </div>
 
@@ -105,15 +153,17 @@ const FinancialMetrics = ({ kpiData, currency = "USD", currencyFilter = "actualv
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6" data-pdf-keep>
       {Object.entries(kpiData).map(([key, value]) => {
-        const isPositive = String(value.change || "").startsWith("+");
-
         const isMoney = ["revenue", "gross_profit", "expenses", "net_profit", "cash_flow"].includes(key);
 
-        const displayValue = isMoney
-          ? renderValue(value.value, currency, currencyFilter)
-          : Number.isFinite(Number(value.value))
-            ? Number(value.value).toLocaleString("en-US")
-            : String(value.value ?? "—");
+        const formatValue = (v) =>
+          isMoney && renderValue
+            ? renderValue(v, currency, currencyFilter)
+            : Number.isFinite(Number(v))
+              ? Number(v).toLocaleString("en-US")
+              : String(v ?? "—");
+
+        const displayValue = formatValue(value.value);
+        const prevDisplay = value.prevValue != null ? formatValue(value.prevValue) : null;
 
         return (
           <KPICard
@@ -121,7 +171,12 @@ const FinancialMetrics = ({ kpiData, currency = "USD", currencyFilter = "actualv
             title={key}
             displayValue={displayValue}
             change={value.change}
-            isPositive={isPositive}
+            changePct={value.changePct}
+            prevLabel={value.prevLabel}
+            prevDetail={value.prevDetail}
+            prevDisplay={prevDisplay}
+            prevLoading={value.prevLoading}
+            note={value.note}
             year={year}
             icon={
               key === "revenue" ? (

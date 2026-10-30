@@ -24,7 +24,8 @@ const copyText = async (text) => {
  * data currently on screen (with the applied filters), lets the user copy them
  * or add selected ones to the report as commentary (`commentary` is
  * hooks/useReportCommentary). Styled to match the report Ask AI drawer
- * (./AskAI.jsx).
+ * (./AskAI.jsx). Optional `fallbackInsights()` -> [{ title, text, category }]
+ * is shown, with a notice, when the AI call fails (e.g. provider out of credits).
  *
  * Renders its own toolbar button by default. Pass `open` / `onOpenChange` /
  * `hideTrigger` to open it from elsewhere (the "Report AI" menu) — it stays
@@ -36,6 +37,7 @@ export default function ReportAIInsights({
   filterLabels,
   viewKey,
   buildContext,
+  fallbackInsights,
   disabled,
   open: openProp,
   onOpenChange,
@@ -50,6 +52,7 @@ export default function ReportAIInsights({
   const [insights, setInsights] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState(""); // AI unavailable, built-in insights shown
   const [selected, setSelected] = useState(new Set());
   const [addedIds, setAddedIds] = useState(new Set());
   const [copiedId, setCopiedId] = useState(null);
@@ -62,6 +65,7 @@ export default function ReportAIInsights({
     setSelected(new Set());
     setAddedIds(new Set());
     setError("");
+    setNotice("");
   }, [viewKey]);
 
   const generate = async () => {
@@ -72,14 +76,24 @@ export default function ReportAIInsights({
     }
     setGenerating(true);
     setError("");
-    try {
-      const result = await commentary.generateInsights({ reportLabel, filterLabels, context });
+    setNotice("");
+    const show = (result) => {
       setInsights(result);
       setSelected(new Set());
       setAddedIds(new Set());
       listTopRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+    try {
+      show(await commentary.generateInsights({ reportLabel, filterLabels, context }));
     } catch (err) {
-      setError(err.message);
+      // AI unavailable: fall back to the page's own computed insights.
+      const builtIn = (fallbackInsights?.() || []).map((i, idx) => ({ id: `builtin-${idx}`, ...i }));
+      if (builtIn.length) {
+        show(builtIn);
+        setNotice(`${err.message} Showing the built-in insights computed from the report data instead.`);
+      } else {
+        setError(err.message);
+      }
     } finally {
       setGenerating(false);
     }
@@ -203,6 +217,14 @@ export default function ReportAIInsights({
                   <div className="flex justify-start">
                     <div className="max-w-[85%] rounded-lg px-3 py-2 text-x bg-white border border-red-200 text-red-700 rounded-bl-none shadow-sm">
                       {error}
+                    </div>
+                  </div>
+                )}
+
+                {!generating && notice && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] rounded-lg px-3 py-2 text-x bg-amber-50 border border-amber-200 text-amber-800 rounded-bl-none shadow-sm">
+                      {notice}
                     </div>
                   </div>
                 )}

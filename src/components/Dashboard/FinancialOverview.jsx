@@ -413,6 +413,13 @@ const parseWidgetsApiResponse = (arr = []) => {
 
 
 
+// Budget-only detail charts shown after the main charts in Actual vs Budget mode.
+const AVB_EXTRA_DEFAULTS = [
+  { name: "AVB_COGS", chart_type: "bar_chart", position: 1001, enableordisable: true },
+  { name: "AVB_OPEX", chart_type: "bar_chart", position: 1002, enableordisable: true },
+];
+const isAvbExtra = (name) => AVB_EXTRA_DEFAULTS.some((w) => w.name === name);
+
 const FinancialOverview = () => {
   const { token, selectedYear } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -444,23 +451,30 @@ const FinancialOverview = () => {
   const [activeWidgets, setActiveWidgets] = useState([]);
   const [showManageModal, setShowManageModal] = useState(false);
 
-  // AVB widgets (local only)
-  const [avbWidgets, setAvbWidgets] = useState([
-    { name: "AVB_Revenue", chart_type: "bar_chart", position: 1, enableordisable: true },
-    { name: "AVB_COGS", chart_type: "bar_chart", position: 2, enableordisable: true },
-    { name: "AVB_OPEX", chart_type: "bar_chart", position: 3, enableordisable: true },
-  ]);
+  // Actual vs Budget mode shows the SAME widgets as the base dashboard (same
+  // saved order / visibility / chart type, actual vs budget series), plus two
+  // budget-only detail charts. Those two have no backend widget config, so
+  // their layout is kept per browser.
+  const [avbWidgets, setAvbWidgets] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("fo_avb_extra_widgets") || "null");
+      if (Array.isArray(saved)) {
+        const map = new Map(saved.map((w) => [w.name, w]));
+        return AVB_EXTRA_DEFAULTS.map((w) => ({ ...w, ...(map.get(w.name) || {}) }));
+      }
+    } catch {
+      /* storage unavailable — use defaults */
+    }
+    return AVB_EXTRA_DEFAULTS;
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("fo_avb_extra_widgets", JSON.stringify(avbWidgets));
+    } catch {
+      /* storage unavailable — layout just isn't remembered */
+    }
+  }, [avbWidgets]);
 
-  // AVF widgets (local only)
-  const [avfWidgets, setAvfWidgets] = useState([
-    { name: "AVF_Revenue",     chart_type: "bar_chart", position: 1, enableordisable: true },
-    { name: "AVF_COGS",        chart_type: "bar_chart", position: 2, enableordisable: true },
-    { name: "AVF_OPEX",        chart_type: "bar_chart", position: 3, enableordisable: true },
-    { name: "AVF_GrossProfit", chart_type: "bar_chart", position: 4, enableordisable: true },
-    { name: "AVF_NetProfit",   chart_type: "bar_chart", position: 5, enableordisable: true },
-    { name: "AVF_Expense",     chart_type: "bar_chart", position: 6, enableordisable: true },
-    { name: "AVF_Cashflow",    chart_type: "bar_chart", position: 7, enableordisable: true },
-  ]);
 
 
 const fetchWidgetsForModal = async () => {
@@ -496,8 +510,9 @@ const fetchWidgetsForModal = async () => {
   }
 };
   
-  // AVB charts data
-  const [avbCharts, setAvbCharts] = useState({});
+  // AVB response charts — kept for the response-shape check only; the budget
+  // view's charts are built from the base data (see budgetChartsData).
+  const [, setAvbCharts] = useState({});
 
   // AVF charts data
   const [avfCharts, setAvfCharts] = useState({});
@@ -536,13 +551,79 @@ const fetchWidgetsForModal = async () => {
         };
 
         const url = `${API_BASE_URL}/api/v1/company/financial/financial-overview/${selectedYear}/${effCurrency}`;
+        // include_prev: the backend returns the prior-year key metrics in the
+        // same response, so the year-over-year comparison needs no 2nd request.
+        const fetchBase = () =>
+          axios.get(url, {
+            headers: { Authorization: `Bearer ${token}` },
+            params: { ...baseParams, include_prev: true },
+          });
+
+        // Actuals (key metrics, trends, budget) drive the KPI cards and the
+        // executive insight in EVERY comparison mode, so they're loaded for
+        // all modes; the prior fiscal year (same months, same filters) is then
+        // fetched in the background for the year-over-year comparison.
+        const applyBaseData = (data) => {
+          if (!data || typeof data !== "object" || !data.keymetrics) {
+            setFinancialData(null);
+            return null;
+          }
+          const normalized = normalizeOverviewResponse(data);
+
+          // Calendar months ("01".."12") the selected year actually has data for,
+          // so the prior year is compared like-for-like (e.g. Jan–Oct vs Jan–Oct).
+          const dataMonths = [...new Set((data?.data_periods || []).map((p) => String(p).slice(5, 7)))].sort();
+          const prevYear = Number(selectedYear) - 1;
+          // Prior year already in the response (include_prev); only fall back
+          // to a separate request when the backend didn't send it.
+          const hasPrev = "prev_keymetrics" in data;
+          const prevKeymetrics = data.prev_keymetrics
+            ? normalizeOverviewResponse({ keymetrics: data.prev_keymetrics }).keymetrics
+            : null;
+
+          setFinancialData({
+            year: data?.year,
+            entities: normalized.entities,
+            keymetrics: normalized.keymetrics,
+            dataMonths,
+            prevYear,
+            prevKeymetrics,
+            prevLoading: !hasPrev && dataMonths.length > 0,
+            charts: normalized.charts,
+            // Not charted in this mode, but the executive insight compares against it.
+            budget: Array.isArray(data?.actual_vs_budget_trend)
+              ? parseAvbArrayResponse(data.actual_vs_budget_trend).charts
+              : {},
+          });
+
+          if (!hasPrev && dataMonths.length) {
+            axios
+              .get(`${API_BASE_URL}/api/v1/company/financial/financial-overview/${prevYear}/${effCurrency}`, {
+                headers: { Authorization: `Bearer ${token}` },
+                params: { ...baseParams, months: dataMonths.join(",") },
+              })
+              .then((prevRes) => {
+                if (myReqId !== requestIdRef.current) return;
+                const prevKeymetrics = normalizeOverviewResponse(prevRes.data).keymetrics;
+                setFinancialData((fd) => (fd ? { ...fd, prevKeymetrics, prevLoading: false } : fd));
+              })
+              .catch(() => {
+                if (myReqId !== requestIdRef.current) return;
+                setFinancialData((fd) => (fd ? { ...fd, prevLoading: false } : fd));
+              });
+          }
+          return normalized;
+        };
 
         // ✅ AVF MODE
         if (effComparison === "ActualVsForecast") {
-          const res = await axios.get(url, {
-            headers: { Authorization: `Bearer ${token}` },
-            params: { ...baseParams, comparison: "ActualVsForecast" },
-          });
+          const [res, baseRes] = await Promise.all([
+            axios.get(url, {
+              headers: { Authorization: `Bearer ${token}` },
+              params: { ...baseParams, comparison: "ActualVsForecast" },
+            }),
+            fetchBase().catch(() => null),
+          ]);
 
           if (myReqId !== requestIdRef.current) return;
 
@@ -560,32 +641,21 @@ const fetchWidgetsForModal = async () => {
           const parsed = parseAvfArrayResponse(avfRaw);
           setAvfCharts(parsed.charts);
 
-          const defaultChartType = parsed?.configRow?.chart_type || "bar_chart";
-          setAvfWidgets((prev) => {
-            const base = [
-              { name: "AVF_Revenue",     chart_type: defaultChartType, position: 1, enableordisable: true },
-              { name: "AVF_COGS",        chart_type: defaultChartType, position: 2, enableordisable: true },
-              { name: "AVF_OPEX",        chart_type: defaultChartType, position: 3, enableordisable: true },
-              { name: "AVF_GrossProfit", chart_type: defaultChartType, position: 4, enableordisable: true },
-              { name: "AVF_NetProfit",   chart_type: defaultChartType, position: 5, enableordisable: true },
-              { name: "AVF_Expense",     chart_type: defaultChartType, position: 6, enableordisable: true },
-              { name: "AVF_Cashflow",    chart_type: defaultChartType, position: 7, enableordisable: true },
-            ];
-            const map = new Map((prev || []).map((w) => [w.name, w]));
-            return base.map((w) => ({ ...w, ...(map.get(w.name) || {}) }));
-          });
-
-          setFinancialData(null);
-          setWidgets([]);
+          // Same widget list (and saved layout) as the base dashboard.
+          const normalizedBase = applyBaseData(baseRes?.data);
+          setWidgets(normalizedBase?.widgets || []);
           return;
         }
 
         // ✅ AVB MODE
         if (effComparison === "ActualVsBudget") {
-          const res = await axios.get(url, {
-            headers: { Authorization: `Bearer ${token}` },
-            params: { ...baseParams, comparison: "ActualVsBudget" },
-          });
+          const [res, baseRes] = await Promise.all([
+            axios.get(url, {
+              headers: { Authorization: `Bearer ${token}` },
+              params: { ...baseParams, comparison: "ActualVsBudget" },
+            }),
+            fetchBase().catch(() => null),
+          ]);
 
           if (myReqId !== requestIdRef.current) return;
 
@@ -603,27 +673,14 @@ const fetchWidgetsForModal = async () => {
           const parsed = parseAvbArrayResponse(avbPayload);
           setAvbCharts(parsed.charts);
 
-          const defaultChartType = parsed?.configRow?.chart_type || "bar_chart";
-          setAvbWidgets((prev) => {
-            const base = [
-              { name: "AVB_Revenue", chart_type: defaultChartType, position: 1, enableordisable: true },
-              { name: "AVB_COGS", chart_type: defaultChartType, position: 2, enableordisable: true },
-              { name: "AVB_OPEX", chart_type: defaultChartType, position: 3, enableordisable: true },
-            ];
-            const map = new Map((prev || []).map((w) => [w.name, w]));
-            return base.map((w) => ({ ...w, ...(map.get(w.name) || {}) }));
-          });
-
-          setFinancialData(null);
-          setWidgets([]); // base widgets not shown in AVB mode
+          // Same widget list (and saved layout) as the base dashboard.
+          const normalizedBase = applyBaseData(baseRes?.data);
+          setWidgets(normalizedBase?.widgets || []);
           return;
         }
 
         // ✅ BASE MODE
-        const baseRes = await axios.get(url, {
-          headers: { Authorization: `Bearer ${token}` },
-          params: baseParams,
-        });
+        const baseRes = await fetchBase();
 
         if (myReqId !== requestIdRef.current) return;
 
@@ -631,22 +688,14 @@ const fetchWidgetsForModal = async () => {
         if (Array.isArray(data?.comparison_filter?.options)) {
           setComparisonOptions(data.comparison_filter.options);
         }
-        const normalized = normalizeOverviewResponse(data);
-
-        setFinancialData({
-          year: data?.year,
-          entities: normalized.entities,
-          keymetrics: normalized.keymetrics,
-          charts: normalized.charts,
-          // Not charted in this mode, but the executive insight compares against it.
-          budget: Array.isArray(data?.actual_vs_budget_trend)
-            ? parseAvbArrayResponse(data.actual_vs_budget_trend).charts
-            : {},
-        });
+        const normalized = applyBaseData(data) || normalizeOverviewResponse(data);
 
         setWidgets(normalized.widgets || []);
         setAvbCharts({});
       } catch (err) {
+        // A newer request (e.g. the year switching right after login) has
+        // replaced this one — its failure isn't what's on screen, so don't report it.
+        if (myReqId !== requestIdRef.current) return;
         console.error(err);
         toast.error("Failed to load financial overview");
       } finally {
@@ -723,38 +772,20 @@ const fetchWidgetsForModal = async () => {
     );
   };
 
-  const toggleAvfVisibility = (name) => {
-    setAvfWidgets((prev) =>
-      (prev || []).map((w) => (w.name === name ? { ...w, enableordisable: !w.enableordisable } : w))
-    );
-  };
-
   const handleRemoveWidget = async (widgetNameEnum) => {
-    if (comparison === "ActualVsForecast") {
-      toggleAvfVisibility(widgetNameEnum);
-      toast.success("Widget hidden");
-      return;
-    }
-    if (comparison === "ActualVsBudget") {
+    if (comparison === "ActualVsBudget" && isAvbExtra(widgetNameEnum)) {
       toggleAvbVisibility(widgetNameEnum);
       toast.success("Widget hidden");
       return;
     }
+    // Base widgets (in every comparison mode) persist to the backend.
     await toggleWidgetVisibility(widgetNameEnum);
   };
 
   const handleChartTypeChange = async (widgetNameEnum, typeUi) => {
     const apiChartType = reverseChartTypeMap[typeUi] || "bar_chart";
 
-    if (comparison === "ActualVsForecast") {
-      setAvfWidgets((prev) =>
-        (prev || []).map((w) => (w.name === widgetNameEnum ? { ...w, chart_type: apiChartType } : w))
-      );
-      toast.success("Chart type updated");
-      return;
-    }
-
-    if (comparison === "ActualVsBudget") {
+    if (comparison === "ActualVsBudget" && isAvbExtra(widgetNameEnum)) {
       setAvbWidgets((prev) =>
         (prev || []).map((w) => (w.name === widgetNameEnum ? { ...w, chart_type: apiChartType } : w))
       );
@@ -783,35 +814,36 @@ const fetchWidgetsForModal = async () => {
   const onDragEnd = async (result) => {
     if (!result.destination) return;
 
-    // AVF drag reorder (local)
-    if (comparison === "ActualVsForecast") {
-      const active = (avfWidgets || [])
-        .filter((w) => w.enableordisable)
-        .sort((a, b) => (a.position || 0) - (b.position || 0));
-
-      const items = Array.from(active);
+    // Comparison modes: reorder the list as displayed (compared charts first).
+    // Base widget positions are saved to the backend (same layout as base
+    // mode); the budget detail charts' positions are kept locally.
+    if (comparison === "ActualVsBudget" || comparison === "ActualVsForecast") {
+      const items = Array.from(effectiveWidgets);
       const [moved] = items.splice(result.source.index, 1);
       items.splice(result.destination.index, 0, moved);
 
       const reordered = items.map((w, i) => ({ ...w, position: i + 1 }));
-      const map = new Map(reordered.map((w) => [w.name, w]));
-      setAvfWidgets((prev) => (prev || []).map((w) => (map.has(w.name) ? map.get(w.name) : w)));
-      return;
-    }
+      const map = new Map(reordered.map((w) => [w.name, w.position]));
+      setAvbWidgets((prev) => (prev || []).map((w) => (map.has(w.name) ? { ...w, position: map.get(w.name) } : w)));
 
-    // AVB drag reorder (local)
-    if (comparison === "ActualVsBudget") {
-      const active = (avbWidgets || [])
-        .filter((w) => w.enableordisable)
-        .sort((a, b) => (a.position || 0) - (b.position || 0));
-
-      const items = Array.from(active);
-      const [moved] = items.splice(result.source.index, 1);
-      items.splice(result.destination.index, 0, moved);
-
-      const reordered = items.map((w, i) => ({ ...w, position: i + 1 }));
-      const map = new Map(reordered.map((w) => [w.name, w]));
-      setAvbWidgets((prev) => (prev || []).map((w) => (map.has(w.name) ? map.get(w.name) : w)));
+      const prevWidgets = widgets;
+      setWidgets((prev) => prev.map((w) => (map.has(w.name) ? { ...w, position: map.get(w.name) } : w)));
+      try {
+        await axios.patch(
+          `${API_BASE_URL}/api/v1/company/financial/overview/widgets/reorder`,
+          {
+            year: selectedYear,
+            widgets: reordered
+              .filter((w) => !isAvbExtra(w.name))
+              .map((w) => ({ name: w?.name || w?.key, position: w.position })),
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        toast.success("Widget positions updated");
+      } catch {
+        toast.error("Failed to save widget order");
+        setWidgets(prevWidgets);
+      }
       return;
     }
 
@@ -851,9 +883,12 @@ const fetchWidgetsForModal = async () => {
     }
   };
 
-  /** ===================== KPI DATA (BASE ONLY) ===================== */
+  /** ===================== KPI DATA ===================== */
+  // Cards always show actuals; what they're compared against follows the
+  // Comparison filter: None → prior fiscal year (same months), Actual vs
+  // Budget → budget for the same months, Actual vs Forecast → progress
+  // against the full-year (rolling) forecast.
   const getKPIData = useCallback(() => {
-    if (comparison === "ActualVsBudget" || comparison === "ActualVsForecast") return {};
     const km = financialData?.keymetrics || {};
 
     const revenue = parseMetric(km.Revenue);
@@ -863,44 +898,224 @@ const fetchWidgetsForModal = async () => {
     const cashFlow = parseMetric(km.cashflow);
     const headcount = Number(km.headcount ?? 0);
 
-    return {
-      revenue: { value: revenue, change: "+0%" },
-      gross_profit: { value: grossProfit, change: "+0%" },
-      expenses: { value: expenses, change: "+0%" },
-      net_profit: { value: netProfit, change: "+0%" },
-      cash_flow: { value: cashFlow, change: "+0%" },
-      headcount: { value: headcount, change: "+0%" },
+    const months = financialData?.dataMonths || [];
+    const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthRange =
+      months.length && months.length < 12 ? `${MON[Number(months[0]) - 1]}–${MON[Number(months[months.length - 1]) - 1]}` : "";
+    const sumSeries = (chart, i) => (chart?.data?.datasets?.[i]?.data || []).reduce((a, v) => a + (Number(v) || 0), 0);
+    const pctChange = (value, base) => {
+      const rounded = Math.round(((value - base) / Math.abs(base)) * 1000) / 10;
+      return { change: rounded === 0 ? "0%" : `${rounded > 0 ? "+" : ""}${rounded.toFixed(1)}%`, changePct: rounded };
     };
-  }, [financialData, comparison]);
+
+    // ── Actual vs Budget: same months as the actuals (budget rows are joined to them).
+    if (comparison === "ActualVsBudget") {
+      const b = financialData?.budget || {};
+      const bRev = sumSeries(b.AVB_Revenue, 1);
+      const bCogs = sumSeries(b.AVB_COGS, 1);
+      const bOpex = sumSeries(b.AVB_OPEX, 1);
+      const hasBudget = !!(bRev || bCogs || bOpex);
+      const budgetDetail = `Budget${monthRange ? ` (${monthRange})` : ""}`;
+      const vsBudget = (value, base) =>
+        !hasBudget || !base
+          ? { value, note: { text: "— no budget", tone: "neutral" } }
+          : { value, ...pctChange(value, base), prevValue: base, prevLabel: "Budget", prevDetail: budgetDetail };
+      return {
+        revenue: vsBudget(revenue, bRev),
+        gross_profit: vsBudget(grossProfit, bRev - bCogs),
+        expenses: vsBudget(expenses, bCogs + bOpex),
+        net_profit: vsBudget(netProfit, bRev - bCogs - bOpex),
+        cash_flow: { value: cashFlow, note: { text: "— not budgeted", tone: "neutral" } },
+        headcount: { value: headcount, note: { text: "— not budgeted", tone: "neutral" } },
+      };
+    }
+
+    // ── Actual vs Forecast: the forecast is rolling (closed months = actuals),
+    // so its full-year sum is the FY outlook; show how much of it is achieved
+    // vs how much of the year has elapsed. Only the forecast series whose
+    // definitions match the cards are used (revenue, total expense, net profit).
+    if (comparison === "ActualVsForecast") {
+      const f = avfCharts || {};
+      const elapsed = months.length ? (months.length / 12) * 100 : null;
+      const vsForecast = (value, chart, lowerIsBetter = false) => {
+        // The forecasting module only forecasts the whole company — never
+        // compare one entity's actuals against the company-wide forecast.
+        if (entity)
+          return { value, note: { text: "— forecast is company-wide", tone: "neutral", tooltip: "Clear the Entity filter to compare against the forecast" } };
+        const actualSum = sumSeries(chart, 0);
+        const outlook = sumSeries(chart, 1);
+        if (!outlook || elapsed == null) return { value, note: { text: "— no forecast", tone: "neutral" } };
+        const achieved = (actualSum / outlook) * 100;
+        const onPace = lowerIsBetter ? achieved <= elapsed + 1 : achieved >= elapsed - 1;
+        return {
+          value,
+          note: {
+            text: `${achieved.toFixed(1)}% of FY forecast`,
+            tone: onPace ? "good" : "bad",
+            tooltip: `FY ${selectedYear} forecast: ${renderValue(outlook, currency, currencyFilter)} · ${elapsed.toFixed(0)}% of the year elapsed`,
+          },
+        };
+      };
+      return {
+        revenue: vsForecast(revenue, f.AVF_Revenue),
+        gross_profit: { value: grossProfit, note: { text: "— no forecast", tone: "neutral" } },
+        expenses: vsForecast(expenses, f.AVF_Expense, true),
+        net_profit: vsForecast(netProfit, f.AVF_NetProfit),
+        cash_flow: { value: cashFlow, note: { text: "— no forecast", tone: "neutral" } },
+        headcount: { value: headcount, note: { text: "— no forecast", tone: "neutral" } },
+      };
+    }
+
+    // Year-over-year change vs the prior fiscal year. A prior year with no
+    // data at all is treated as "no comparison" rather than a fake 0%.
+    const pk = financialData?.prevKeymetrics;
+    const prev = pk
+      ? {
+          revenue: parseMetric(pk.Revenue),
+          gross_profit: parseMetric(pk.Grossprofit),
+          expenses: parseMetric(pk.Expense),
+          net_profit: parseMetric(pk.NetProfit),
+          cash_flow: parseMetric(pk.cashflow),
+          headcount: Number(pk.headcount ?? 0) || 0,
+        }
+      : null;
+    const prevHasData =
+      !!prev && ["revenue", "expenses", "gross_profit", "net_profit", "cash_flow"].some((k) => prev[k] !== 0);
+    const prevLabel = `FY ${financialData?.prevYear ?? Number(selectedYear) - 1}`;
+    // Tooltip names the compared months when the selected year is partial.
+    const prevDetail = monthRange ? `${prevLabel} (${monthRange}, same months)` : prevLabel;
+
+    const kpi = (key, value) => {
+      const p = prevHasData ? prev[key] : null;
+      if (p == null || p === 0)
+        return { value, change: null, changePct: null, prevValue: p, prevLabel, prevDetail, prevLoading: !!financialData?.prevLoading };
+      return { value, ...pctChange(value, p), prevValue: p, prevLabel, prevDetail };
+    };
+
+    return {
+      revenue: kpi("revenue", revenue),
+      gross_profit: kpi("gross_profit", grossProfit),
+      expenses: kpi("expenses", expenses),
+      net_profit: kpi("net_profit", netProfit),
+      cash_flow: kpi("cash_flow", cashFlow),
+      headcount: kpi("headcount", headcount),
+    };
+  }, [financialData, comparison, selectedYear, avfCharts, currency, currencyFilter, entity]);
 
   /** ===================== chartsData + widgets for <FinancialCharts /> ===================== */
-  const chartsData = useMemo(() => {
-    if (comparison === "ActualVsForecast") return avfCharts || {};
-    if (comparison === "ActualVsBudget") return avbCharts || {};
-    return financialData?.charts || {};
-  }, [comparison, avfCharts, avbCharts, financialData]);
+  // Actual vs Budget: every base chart, with a budget series wherever a budget
+  // exists. Budget only covers revenue / COGS / opex, so the derived budgets are
+  // expense = COGS + opex, gross profit = revenue − COGS, net profit =
+  // revenue − COGS − opex (same basis as the actuals). Charts with no budget
+  // (cash flow, custom metrics) show actuals only.
+  const budgetChartsData = useMemo(() => {
+    const base = financialData?.charts || {};
+    const b = financialData?.budget || {};
+    const byLabel = (chart) => {
+      const ds = chart?.data?.datasets?.[1]?.data || [];
+      return new Map((chart?.data?.labels || []).map((l, i) => [String(l), Number(ds[i]) || 0]));
+    };
+    const rev = byLabel(b.AVB_Revenue);
+    const cogs = byLabel(b.AVB_COGS);
+    const opex = byLabel(b.AVB_OPEX);
+    const hasBudget = rev.size > 0 || cogs.size > 0 || opex.size > 0;
+    const budgetFor = {
+      revenue_trend: (l) => rev.get(l) ?? 0,
+      expense_trend: (l) => (cogs.get(l) ?? 0) + (opex.get(l) ?? 0),
+      gross_profit_trend: (l) => (rev.get(l) ?? 0) - (cogs.get(l) ?? 0),
+      net_profit_trend: (l) => (rev.get(l) ?? 0) - (cogs.get(l) ?? 0) - (opex.get(l) ?? 0),
+    };
 
+    const out = {};
+    Object.entries(base).forEach(([key, chart]) => {
+      const labels = chart?.data?.labels || [];
+      const actual = chart?.data?.datasets?.[0]?.data || [];
+      const title = chart?.title || toTitle(key);
+      const fn = hasBudget ? budgetFor[key] : null;
+      out[key] = fn
+        ? {
+            title: `${title} — Actual vs Budget`,
+            data: {
+              labels,
+              datasets: [
+                { label: "Actual", data: actual },
+                { label: "Budget", data: labels.map((l) => fn(String(l))) },
+              ],
+            },
+          }
+        : {
+            title: `${title} (no budget)`,
+            data: { labels, datasets: [{ label: "Actual", data: actual }] },
+          };
+    });
+    if (b.AVB_COGS) out.AVB_COGS = { ...b.AVB_COGS, title: "COGS — Actual vs Budget" };
+    if (b.AVB_OPEX) out.AVB_OPEX = { ...b.AVB_OPEX, title: "Opex — Actual vs Budget" };
+    return out;
+  }, [financialData]);
+
+  // Actual vs Forecast: every base chart. Only the forecast series whose
+  // definitions match the dashboard's actuals are used — revenue, total
+  // expense and net profit (the backend's forecast gross profit / COGS / opex
+  // / cash flow use different bases). They come from the forecast endpoint so
+  // they span the full year (future months: forecast only). The forecast is
+  // company-wide, so with an Entity selected the charts show actuals only.
+  const forecastChartsData = useMemo(() => {
+    const base = financialData?.charts || {};
+    const f = avfCharts || {};
+    const forecastFor = { revenue_trend: f.AVF_Revenue, expense_trend: f.AVF_Expense, net_profit_trend: f.AVF_NetProfit };
+
+    const out = {};
+    Object.entries(base).forEach(([key, chart]) => {
+      const title = chart?.title || toTitle(key);
+      const fc = forecastFor[key];
+      const fLabels = fc?.data?.labels || [];
+      const [fa, ff] = fc?.data?.datasets || [];
+      if (!entity && fLabels.length && fa && ff) {
+        out[key] = {
+          title: `${title} — Actual vs Forecast`,
+          data: {
+            labels: fLabels,
+            datasets: [
+              // Months not closed yet have no actuals — leave them empty, not 0.
+              { label: "Actual", data: fa.data.map((v, i) => (!Number(v) && Number(ff.data[i]) ? null : v)) },
+              { label: "Forecast", data: ff.data },
+            ],
+          },
+        };
+      } else {
+        out[key] = {
+          title: `${title} (${entity && fc ? "forecast is company-wide" : "no forecast"})`,
+          data: { labels: chart?.data?.labels || [], datasets: [{ label: "Actual", data: chart?.data?.datasets?.[0]?.data || [] }] },
+        };
+      }
+    });
+    return out;
+  }, [financialData, avfCharts, entity]);
+
+  const chartsData = useMemo(() => {
+    if (comparison === "ActualVsForecast") return forecastChartsData;
+    if (comparison === "ActualVsBudget") return budgetChartsData;
+    return financialData?.charts || {};
+  }, [comparison, forecastChartsData, budgetChartsData, financialData]);
+
+  // In a comparison mode, charts that actually carry the budget/forecast
+  // series come first; the saved order applies within each group.
   const effectiveWidgets = useMemo(() => {
-    if (comparison === "ActualVsForecast") {
-      return (avfWidgets || [])
-        .filter((w) => w.enableordisable)
-        .sort((a, b) => (a.position || 0) - (b.position || 0));
-    }
-    if (comparison === "ActualVsBudget") {
-      return (avbWidgets || [])
-        .filter((w) => w.enableordisable)
-        .sort((a, b) => (a.position || 0) - (b.position || 0));
+    if (comparison === "ActualVsBudget" || comparison === "ActualVsForecast") {
+      const list = [
+        ...(activeWidgets || []),
+        ...(comparison === "ActualVsBudget" ? (avbWidgets || []).filter((w) => w.enableordisable) : []),
+      ];
+      const compared = (w) => ((chartsData?.[w.name]?.data?.datasets || []).length > 1 ? 0 : 1);
+      return list.sort((a, b) => compared(a) - compared(b) || (a.position || 0) - (b.position || 0));
     }
     return activeWidgets || [];
-  }, [comparison, avfWidgets, avbWidgets, activeWidgets]);
+  }, [comparison, avbWidgets, activeWidgets, chartsData]);
 
   const activeChartTypes = useMemo(() => {
-    const list =
-      comparison === "ActualVsForecast" ? avfWidgets
-      : comparison === "ActualVsBudget" ? avbWidgets
-      : activeWidgets;
+    const list = comparison === "ActualVsBudget" ? [...(activeWidgets || []), ...(avbWidgets || [])] : activeWidgets;
     return Object.fromEntries((list || []).map((w) => [w.name, chartTypeMap[w.chart_type] || "bar"]));
-  }, [comparison, avfWidgets, avbWidgets, activeWidgets]);
+  }, [comparison, avbWidgets, activeWidgets]);
 
   /** ===================== View More handler ===================== */
   const handleViewMore = useCallback(
@@ -916,15 +1131,13 @@ const ManageWidgetsModal = ({ onClose }) => {
   // ✅ base mode: show ALL widgets (enabled + disabled)
 // Always show every widget from backend
 const list =
-  comparison === "ActualVsForecast"
-    ? avfWidgets
-    : comparison === "ActualVsBudget"
-    ? avbWidgets
+  comparison === "ActualVsBudget"
+    ? [...widgets, ...avbWidgets].sort((a, b) => (a.position || 0) - (b.position || 0))
     : [...widgets].sort((a, b) => (a.position || 0) - (b.position || 0));
 const toggle =
-  comparison === "ActualVsForecast" ? toggleAvfVisibility
-  : comparison === "ActualVsBudget" ? toggleAvbVisibility
-  : toggleWidgetVisibility;
+  comparison === "ActualVsBudget"
+    ? (name) => (isAvbExtra(name) ? toggleAvbVisibility(name) : toggleWidgetVisibility(name))
+    : toggleWidgetVisibility;
 
   const [q, setQ] = useState("");
 
@@ -1111,14 +1324,6 @@ const toggle =
   );
 };
 
-  if (loading) {
-    return (
-      <div className="absolute top-0 left-0 right-0 bottom-0 z-50 flex justify-center items-center h-screen">
-        <Loader />
-      </div>
-    );
-  }
-
   // Export: the dashboard as a PDF, paginated between cards rather than through them.
   const handleExportPdf = async ({ subtitle }) => {
     if (!dashboardRef.current || exporting) return;
@@ -1137,8 +1342,20 @@ const toggle =
     }
   };
 
+  // While loading, the page stays mounted but hidden behind the loader instead
+  // of being unmounted: Smart Alerts and Pinned Reports fetch their own data,
+  // so they start in parallel with the overview request (and aren't refetched
+  // on every filter change). Everything driven by the overview data still
+  // mounts only once it has loaded, as before.
   return (
-    <div className="relative space-y-6 min-h-screen" ref={dashboardRef}>
+    <>
+    {loading && (
+      <div className="absolute top-0 left-0 right-0 bottom-0 z-50 flex justify-center items-center h-screen">
+        <Loader />
+      </div>
+    )}
+    <div className={`relative space-y-6 min-h-screen${loading ? " hidden" : ""}`} ref={dashboardRef}>
+      {!loading && (<>
       <FinancialHeader
         showFilters={showFilters}
         setShowFilters={setShowFilters}
@@ -1179,7 +1396,7 @@ const toggle =
         comparisonOptions={comparisonOptions}
       />
 
-      {comparison === "None" && (
+      {financialData && (
         <FinancialMetrics
           kpiData={getKPIData()}
           currency={currency}
@@ -1188,10 +1405,12 @@ const toggle =
           year={selectedYear}
         />
       )}
+      </>)}
 
       {/* Two-column layout: Charts (left) + Smart Alerts sidebar (right) */}
       <div className="flex flex-col lg:flex-row gap-6 items-start">
         <div className="w-full lg:flex-1 min-w-0">
+          {!loading && (
           <FinancialCharts
             widgets={effectiveWidgets}
             chartsData={chartsData}
@@ -1205,6 +1424,7 @@ const toggle =
             onViewMore={handleViewMore}
             year={selectedYear}
           />
+          )}
         </div>
         <div className="w-full lg:w-72 xl:w-80 lg:flex-shrink-0 lg:sticky lg:top-4 lg:self-start" data-pdf-keep>
           <SmartAlertsCard />
@@ -1213,9 +1433,15 @@ const toggle =
 
       <PinnedCustomReports />
 
-      {comparison === "None" && financialData && (
+      {!loading && financialData && (
         <ExecutiveInsight
+          comparison={comparison}
+          forecast={comparison === "ActualVsForecast" ? avfCharts : null}
+          forecastCompanyWideOnly={!!entity}
           keymetrics={financialData.keymetrics}
+          prevKeymetrics={financialData.prevKeymetrics}
+          prevLabel={financialData.prevYear ? `FY ${financialData.prevYear}` : ""}
+          monthsWithData={financialData.dataMonths?.length || 0}
           charts={financialData.charts}
           budget={financialData.budget}
           parseMetric={parseMetric}
@@ -1225,8 +1451,9 @@ const toggle =
         />
       )}
 
-      {showManageModal && <ManageWidgetsModal onClose={() => setShowManageModal(false)} />}
+      {!loading && showManageModal && <ManageWidgetsModal onClose={() => setShowManageModal(false)} />}
     </div>
+    </>
   );
 };
 
