@@ -73,8 +73,9 @@ export function AnalyzeButton({ onClick, className = "", title = "Explain this n
  * the supporting data the analysis was based on.
  *
  * `loadContext(target)` returns { context: string, supporting: [{ title,
- * columns: [{ key, label, type }], rows }] } — the page decides what data
- * backs each value.
+ * columns: [{ key, label, type }], rows }], fallback? } — the page decides what
+ * data backs each value. Optional `fallback` ({ headline, summary, drivers })
+ * is shown, with a notice, when the AI call fails (e.g. provider out of credits).
  */
 export default function AnalyzeWithAI({
   target,
@@ -93,6 +94,7 @@ export default function AnalyzeWithAI({
   const [tab, setTab] = useState("analysis");
   const [status, setStatus] = useState("idle"); // idle | loading | ready | error
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState(""); // AI unavailable, built-in analysis shown
   const [analysis, setAnalysis] = useState(null);
   const [supporting, setSupporting] = useState([]);
   const [chat, setChat] = useState([]); // [{ role, content }] after the analysis
@@ -120,12 +122,21 @@ export default function AnalyzeWithAI({
     setAnalysis(null);
     setChat([]);
     setAdded(false);
+    setNotice("");
     try {
-      const { context, supporting: support } = await loadContext(target);
+      const { context, supporting: support, fallback } = await loadContext(target);
       if (id !== runId.current) return;
       setSupporting(support || []);
       contextRef.current = context;
-      const result = await api.analyze({ target: apiTarget, filterLabels, context });
+      let result;
+      try {
+        result = await api.analyze({ target: apiTarget, filterLabels, context });
+      } catch (err) {
+        // AI unavailable: show the page's own computed analysis, if it has one.
+        if (!fallback) throw err;
+        result = { follow_up_questions: [], drivers: [], ...fallback, raw: fallback.summary };
+        setNotice(`${err.message} Showing the built-in analysis computed from the report data instead.`);
+      }
       if (id !== runId.current) return;
       rawRef.current = result.raw;
       setAnalysis(result);
@@ -275,6 +286,12 @@ export default function AnalyzeWithAI({
                   {status === "error" && (
                     <div className="rounded-lg px-3 py-2 text-x bg-white border border-red-200 text-red-700 shadow-sm">
                       {error}
+                    </div>
+                  )}
+
+                  {notice && analysis && (
+                    <div className="rounded-lg px-3 py-2 text-x bg-amber-50 border border-amber-200 text-amber-800 shadow-sm">
+                      {notice}
                     </div>
                   )}
 

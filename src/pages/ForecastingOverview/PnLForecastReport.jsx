@@ -101,6 +101,11 @@ const PNL_ROWS = [
 // KPI cards — subset of rows that matter most at a glance
 const KPI_KEYS = ["revenue", "gross_profit", "operating_expense", "actual_profit", "budget_profit", "variance"];
 
+// Kept across visits so reopening the page shows the last result instantly
+// (then refreshes quietly) instead of a blank "No data" + skeleton.
+const dataCache = new Map();     // request URL -> data
+const scenarioCache = new Map(); // scenarios lookup key -> { opts, selected }
+
 async function parseApiError(res) {
   const t = await res.text().catch(() => "");
   try { const j = JSON.parse(t); return j.detail || j.message || t || `HTTP ${res.status}`; }
@@ -421,20 +426,21 @@ export default function PnLForecastReport() {
 
   const [cf,                setCf]                = useState("actualvalue");
   const [pf,                setPf]                = useState("monthly");
-  const [selectedScenario,  setSelectedScenario]  = useState("Baseline");
+  const [selectedScenario,  setSelectedScenario]  = useState(() => scenarioCache.get(year)?.selected || "Baseline");
   const [comparison,        setComparison]        = useState("");
   const [quarter,           setQuarter]           = useState(""); // "" = all quarters
   const [rows,              setRows]              = useState(null);
   const [loading,           setLoading]           = useState(false);
   const [error,             setError]             = useState(null);
-  const [availableScenarios, setAvailableScenarios] = useState(DEFAULT_SCENARIO_OPTIONS);
+  const [availableScenarios, setAvailableScenarios] = useState(() => scenarioCache.get(year)?.opts || DEFAULT_SCENARIO_OPTIONS);
   // Blocks the first fetchData() call until the initial available-scenarios
   // lookup (below) has resolved and selectedScenario has been corrected to
   // whichever one is marked final — otherwise fetchData fires once for the
   // hardcoded "Baseline" default, then fires again a moment later once the
   // final scenario is known, hitting the (expensive) pnl-forecast endpoint
   // twice on every page load.
-  const [initializing, setInitializing] = useState(true);
+  // Already resolved on an earlier visit → no need to wait for it again.
+  const [initializing, setInitializing] = useState(() => !scenarioCache.has(year));
 
   const scenarioOptions = availableScenarios;
 
@@ -455,23 +461,31 @@ export default function PnLForecastReport() {
 
   const abortRef = useRef(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (force = false) => {
     if (!year || !currency) return;
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
-    setLoading(true);
-    setError(null);
-    setRows(null);
-
     const { scenario, custom_scenario_name } = getScenarioApiParams(selectedScenario);
     const params = new URLSearchParams({ currency_filter: cf, period_filter: effectivePf, scenario });
     if (custom_scenario_name) params.set("custom_scenario_name", custom_scenario_name);
     if (comparison) params.set("comparison", comparison);
+    const url = `${API}/${year}/${currency}?${params}`;
+
+    // Cached → show it right away and refresh in the background (no skeleton).
+    const cached = force ? null : dataCache.get(url);
+    setError(null);
+    if (cached) {
+      setRows(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      setRows(null);
+    }
 
     try {
-      const res = await fetch(`${API}/${year}/${currency}?${params}`, {
+      const res = await fetch(url, {
         headers: {
           Authorization:  token ? `Bearer ${token}` : "",
           Accept:         "application/json",
@@ -483,24 +497,20 @@ export default function PnLForecastReport() {
       if (!res.ok) throw new Error(await parseApiError(res));
       const data = await res.json();
       const rawRows = Array.isArray(data) ? data : (data?.pnl_forecast ?? data?.data ?? data?.rows ?? []);
-      setRows(rawRows);
-      // Populate scenario dropdown from the API response
-      if (Array.isArray(data.available_scenarios) && data.available_scenarios.length > 0) {
-        const opts = [
-          { value: "Baseline", label: "Baseline", type: "system" },
-          ...data.available_scenarios
-            .filter(s => s.scenario_name?.toLowerCase().replace(/ /g, "_") !== "base_case")
-            .map(s => ({ value: s.scenario_name, label: s.scenario_name, type: s.scenario_type })),
-        ];
-        setAvailableScenarios(opts);
-      }
+      dataCache.set(url, rawRows);
+      // Skip the re-render when the background refresh brought nothing new.
+      if (!cached || JSON.stringify(cached) !== JSON.stringify(rawRows)) setRows(rawRows);
+      // The scenario dropdown comes only from the available-scenarios lookup
+      // below: overwriting it from this response dropped the is_final flags
+      // and could reset the selected scenario, which fired a second fetch.
     } catch (e) {
       if (e.name === "AbortError") return;
-      setError(e.message);
+      if (!cached) setError(e.message);
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
-  }, [year, currency, cf, effectivePf, selectedScenario, comparison, token, fiscalYearStartMonth]); // eslint-disable-line
+  // fiscalYearStartMonth isn't sent, so it no longer refetches when it loads.
+  }, [year, currency, cf, effectivePf, selectedScenario, comparison, token]); // eslint-disable-line
 
   useEffect(() => { if (!initializing) fetchData(); }, [fetchData, initializing]);
   useEffect(() => () => { if (abortRef.current) abortRef.current.abort(); }, []);
@@ -523,15 +533,14 @@ export default function PnLForecastReport() {
                 .map(s => ({ value: s.scenario_name, label: s.scenario_name, type: s.scenario_type, is_final: !!s.is_final })),
             ];
             setAvailableScenarios(opts);
+            const finalOpt = opts.find(o => o.is_final);
+            scenarioCache.set(year, { opts, selected: finalOpt?.value || "Baseline" });
             // Resolve the correct initial scenario here, synchronously with
             // this same state update, instead of leaving it to the separate
             // reactive effect below — that's what previously let fetchData
             // fire once for "Baseline" and again once the final scenario
             // was discovered.
-            if (isInitial) {
-              const finalOpt = opts.find(o => o.is_final);
-              if (finalOpt) setSelectedScenario(finalOpt.value);
-            }
+            if (isInitial && finalOpt) setSelectedScenario(finalOpt.value);
           }
         })
         .catch(() => {})
@@ -675,7 +684,7 @@ export default function PnLForecastReport() {
 
           <div className="flex items-center gap-2">
             <button
-              onClick={fetchData}
+              onClick={() => fetchData(true)}
               disabled={loading}
               className="flex items-center gap-1.5 px-3.5 py-1 rounded-lg border border-white/25 bg-white/10 text-x font-semibold text-white hover:bg-white/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -770,8 +779,8 @@ export default function PnLForecastReport() {
         {/* KPI Cards */}
         <KpiCards rows={viewRows} cf={cf} scopeLabel={quarter ? `${quarter} total` : "Year total"} />
 
-        {/* Table */}
-        {loading ? (
+        {/* Table — skeleton (not "No data") while the first load is pending */}
+        {loading || (initializing && !viewRows) ? (
           <TableSkeleton columns={5} rows={8} />
         ) : !viewRows ? (
           <div className="py-16 text-center text-sky-400">

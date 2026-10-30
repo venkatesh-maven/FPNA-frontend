@@ -4,7 +4,7 @@ import {
   FiRefreshCw, FiDownload, FiUpload, FiSearch, FiX,
   FiTrendingUp, FiBarChart2, FiAlertCircle, FiPlus,
   FiEdit2, FiTrash2, FiMoreVertical, FiArrowUp, FiArrowDown,
-  FiDroplet, FiMessageSquare, FiSend, FiSettings,
+  FiDroplet, FiMessageSquare, FiSend, FiSettings, FiCpu, FiEdit,
 } from "react-icons/fi";
 
 import { AuthContext } from "../../context/AuthContext";
@@ -96,68 +96,142 @@ export function displayEditableNumber(value, isFocused) {
   return value != null && value !== "" ? +Number(value).toFixed(getDecimalPrecision()) : "";
 }
 
-// Comma-grouped variant for the Cashflow Components "Adjusted" cells, which
-// use a text input (so commas can render — native <input type="number">
-// strips thousands separators) instead of the number inputs used elsewhere.
-// Same focused/unfocused split as displayEditableNumber above.
-function displayAdjustedCommaCF(value, isFocused) {
-  if (isFocused) return value ?? "";
-  if (value == null || value === "") return "";
-  const num = Number(value);
-  if (!Number.isFinite(num)) return "";
-  return num.toLocaleString(undefined, {
-    minimumFractionDigits: getDecimalPrecision(),
-    maximumFractionDigits: getDecimalPrecision(),
-  });
-}
-
-// ─── Category colour accents ──────────────────────────────────────────────────
-const CAT_COLORS = [
-  { dot: "#15803d", light: "#f0fdf4", badge: "#dcfce7", badgeText: "#15803d" },
-  { dot: "#1565c0", light: "#e3f2fd", badge: "#bbdefb", badgeText: "#0c3461" },
-  { dot: "#b45309", light: "#fffbeb", badge: "#fde68a", badgeText: "#92400e" },
-  { dot: "#6d28d9", light: "#f5f3ff", badge: "#ede9fe", badgeText: "#5b21b6" },
-  { dot: "#0e7490", light: "#ecfeff", badge: "#cffafe", badgeText: "#0e7490" },
-  { dot: "#be185d", light: "#fdf2f8", badge: "#fce7f3", badgeText: "#be185d" },
-  { dot: "#dc2626", light: "#fff1f2", badge: "#fee2e2", badgeText: "#991b1b" },
-  { dot: "#064e3b", light: "#ecfdf5", badge: "#a7f3d0", badgeText: "#065f46" },
-];
-const catColor = (name = "") => CAT_COLORS[Math.abs(name.charCodeAt(0)) % CAT_COLORS.length];
-
 // ─── TABS ─────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: "cashflow",  label: "Cashflow Components", icon: <FiBarChart2 size={13}/> },
-  { id: "drivers",   label: "Driver Adjustments",  icon: <FiSettings size={13}/> },
-  { id: "scenarios", label: "Cashflow Scenarios",  icon: <FiTrendingUp size={13}/> },
-  { id: "comments",  label: "Comments",            icon: <FiMessageSquare size={13}/> },
+  { id: "summary",   label: "Summary",   icon: <FiBarChart2 size={13}/> },
+  { id: "drivers",   label: "Drivers",   icon: <FiSettings size={13}/> },
+  { id: "scenarios", label: "Scenarios", icon: <FiTrendingUp size={13}/> },
 ];
 
 // ─── KPI Cards ────────────────────────────────────────────────────────────────
-function KpiRow({ summary, fmt }) {
+// Same cards as the Revenue Forecast (RevenueForecastHelpers KpiCards), on
+// the net cash change (receipts − payments) plus the closing cash balance.
+function KpiRow({ summary, months, fmt }) {
+  const ai  = toCalcNumber(summary?.net_cashflow_ai);
+  const adj = toCalcNumber(summary?.net_cashflow_adjusted);
+  const varAmt = adj - ai;
+  const varPct = ai ? (varAmt / Math.abs(ai)) * 100 : 0;
+  const has = summary && summary.net_cashflow_adjusted != null;
+  const period = months.length > 1 ? `${months[0]}–${months[months.length - 1]}` : months[0] || "";
+
   const cards = [
-    { label: "Operating CF", value: summary?.operating_cf ?? summary?.total_inflows_ai, sub: "Net cash from operations" },
-    { label: "Investing CF", value: summary?.investing_cf ?? summary?.total_outflows_ai, sub: "CAPEX & investments" },
-    { label: "Financing CF", value: summary?.financing_cf, sub: "Debt & equity" },
-    { label: "Net Cash Change", value: summary?.net_cashflow_adjusted ?? summary?.net_cashflow_ai, sub: "Quarter net increase" },
-    { label: "Closing Balance", value: summary?.closing_balance, sub: "End of quarter forecast" },
+    {
+      label: "AI Net Cash Change", value: has ? fmt(ai) : "—",
+      sub: `${period} AI forecast`, icon: <FiCpu size={16}/>,
+    },
+    {
+      label: "Adjusted Net Cash Change", value: has ? fmt(adj) : "—",
+      sub: "Receipts − payments, adjusted", icon: <FiEdit size={16}/>,
+    },
+    {
+      label: "Variance ($)", value: has ? fmt(varAmt) : "—",
+      sub: `${varPct.toFixed(1)}% vs AI baseline`,
+      icon: varAmt >= 0 ? <FiArrowUp size={16}/> : <FiArrowDown size={16}/>,
+    },
+    {
+      label: "Variance (%)", value: has ? `${varPct >= 0 ? "+" : ""}${varPct.toFixed(1)}%` : "—",
+      sub: "Relative to AI baseline",
+      icon: varPct >= 0 ? <FiArrowUp size={16}/> : <FiArrowDown size={16}/>,
+    },
+    {
+      label: "Closing Balance", value: has ? fmt(summary.closing_balance) : "—",
+      sub: has ? `Opening ${fmt(summary.opening_cash)}` : "Month-ending cash position",
+      icon: <FiDroplet size={16}/>,
+    },
   ];
+
   return (
-    <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-2 my-2">
-      {cards.map((c) => (
-        <div key={c.label} className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm hover:shadow-md transition-shadow">
-          <div className="mb-0.5 flex items-center justify-between gap-2">
-            <div className="truncate text-xs font-semibold uppercase tracking-wider text-sky-600">{c.label}</div>
-            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-sky-200 bg-sky-100 text-xs font-black text-sky-700">$</div>
-          </div>
-          <div className="flex min-w-0 items-baseline gap-2">
-            <span className="whitespace-nowrap tabular-nums text-base font-bold text-sky-900">
-              {c.value != null ? fmt(c.value) : "—"}
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-2 mb-2">
+      {cards.map((card) => (
+        <div
+          key={card.label}
+          className="min-w-0 bg-white rounded-xl border border-sky-200 px-3 py-2 shadow-sm hover:shadow-md transition-shadow"
+        >
+          <div className="flex items-center justify-between gap-2 mb-0.5">
+            <span className="text-xs text-sky-600 font-semibold uppercase tracking-wider truncate">{card.label}</span>
+            <span className="w-6 h-6 shrink-0 rounded-lg bg-sky-100 border border-sky-200 flex items-center justify-center text-sky-700 [&_svg]:size-3.5">
+              {card.icon}
             </span>
-            <span className="truncate text-[11px] text-sky-600" title={c.sub}>{c.sub}</span>
+          </div>
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className="text-base font-bold text-sky-900 tabular-nums whitespace-nowrap">{card.value}</span>
+            <span className="text-[11px] text-sky-600 truncate" title={card.sub}>{card.sub}</span>
           </div>
         </div>
       ))}
     </div>
+  );
+}
+
+// ─── Tab action buttons ───────────────────────────────────────────────────────
+// Template download + Excel upload for the Summary and Drivers tabs, as on the
+// Revenue Forecast (backend: /excel-template/{adjustments,driver-adjustments},
+// /excel-upload/{adjustments,driver-adjustments}).
+function TabActionButtons({ activeTab, year, quarter, token, canEdit, onSuccess, addToast }) {
+  const [uploadOpen,  setUploadOpen]  = useState(false);
+  const [uploading,   setUploading]   = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const type = activeTab === "summary" ? "adjustments" : activeTab === "drivers" ? "driver-adjustments" : null;
+  if (!type) return null;
+  const isDrivers = type === "driver-adjustments";
+
+  const downloadTemplate = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch(`${API_BASE}/${year}/excel-template/${type}?quarter=${quarter}`, {
+        headers: { Authorization: `Bearer ${token}`, accept: "application/json" },
+      });
+      if (!res.ok) throw new Error(await parseApiError(res));
+      const blob = await res.blob();
+      const url  = window.URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = `cashflow-${type}-${year}-${quarter}.xlsx`; a.click();
+      window.URL.revokeObjectURL(url);
+      addToast("Template downloaded ✓", "success");
+    } catch (e) { addToast(`Download failed: ${e.message}`, "error"); }
+    finally { setDownloading(false); }
+  };
+
+  const handleExcelUpload = async (file) => {
+    setUploading(true); setUploadError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(`${API_BASE}/${year}/excel-upload/${type}?quarter=${quarter}`, {
+        method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form,
+      });
+      if (!res.ok) throw new Error(await parseApiError(res));
+      addToast(`${isDrivers ? "Driver" : "Cashflow"} adjustments uploaded ✓`, "success");
+      setUploadOpen(false);
+      onSuccess?.();
+    } catch (e) {
+      setUploadError(e.message);
+      addToast(`Upload failed: ${e.message}`, "error");
+    } finally { setUploading(false); }
+  };
+
+  return (
+    <>
+      <div className="flex items-center gap-2">
+        <button onClick={downloadTemplate} disabled={downloading}
+          className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-sky-700 text-x font-semibold transition-all disabled:opacity-60">
+          {downloading ? <span className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"/> : <FiDownload size={12}/>}
+          Download Template
+        </button>
+        {canEdit && (
+          <button onClick={() => { setUploadError(null); setUploadOpen(true); }}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-x font-semibold transition-all shadow-sm">
+            <FiUpload size={12}/> Upload Excel
+          </button>
+        )}
+      </div>
+      <ImportModal open={uploadOpen} onClose={() => setUploadOpen(false)}
+        title={isDrivers ? "Upload Driver Adjustments" : "Upload Cashflow Adjustments"}
+        description={`Upload your filled ${isDrivers ? "Driver" : "Cashflow"} Adjustments template.`}
+        uploading={uploading} error={uploadError} onUpload={handleExcelUpload}/>
+    </>
   );
 }
 
@@ -328,242 +402,349 @@ function DeleteConfirmModal({ open, scenarioName, onClose, onConfirm, loading })
 }
 
 // ─── Cashflow Components Table ────────────────────────────────────────────────
-function CashflowTable({ rows, months, canEdit, cellComments, overallComments, onAdjChange, onAdjBlur, onCommentChange, onOverallChange, fmt, filterText, setFilterText }) {
+// ─── Direct-method layout (same lines as the Cash Flow Statement) ─────────────
+// Rows carry `section` / `sign` from the backend (cashflow_lines.LINE_SECTIONS):
+// receipts add to cash, payments (COGS / operating / additional) take it away.
+const CF_SECTION_TITLES = {
+  receipts:   { heading: "(+) Cash Receipts",       total: "Total Cash Receipts" },
+  cogs:       { heading: "(−) Cost of Goods Sold",  total: "Total Cost of Goods Sold" },
+  opex:       { heading: "(−) Operating Expenses",  total: "Total Operating Expenses" },
+  additional: { heading: "(−) Additional Expenses", total: "Total Additional Expenses" },
+};
+
+// Same alternating month shading as the Revenue Forecast tables.
+const CF_MONTH_THEME = [
+  { bg: "bg-slate-50/60" },
+  { bg: "bg-blue-50/30" },
+  { bg: "bg-indigo-50/20" },
+];
+
+// Sections in row order: [{ key, label, sign, rows }].
+function groupBySection(rows) {
+  const out = [];
+  rows.forEach((r) => {
+    const key = r.section || "other";
+    let sec = out.find((s) => s.key === key);
+    if (!sec) {
+      sec = { key, label: r.category || key, sign: r.sign < 0 ? -1 : 1, rows: [] };
+      out.push(sec);
+    }
+    sec.rows.push(r);
+  });
+  return out;
+}
+
+// A line with nothing in it: no history, no forecast, no adjustment.
+function isEmptyCfLine(row, monthCount) {
+  if (toCalcNumber(row.previous_month)) return false;
+  for (let m = 1; m <= monthCount; m++) {
+    if (toCalcNumber(row[`month${m}_ai`]) || toCalcNumber(row[`month${m}_adjusted`])) return false;
+  }
+  return true;
+}
+
+// Per-month AI / Adjusted totals for every section, total payments, net cash
+// change and cash position (opening = cash on hand going into month 1).
+function cfAggregates(rows, monthCount, openingCash) {
+  const months = Array.from({ length: monthCount }, (_, mi) => mi + 1);
+  const total = (list) => ({
+    prev: list.reduce((s, r) => s + toCalcNumber(r.previous_month), 0),
+    ai:   months.map((m) => list.reduce((s, r) => s + toCalcNumber(r[`month${m}_ai`]), 0)),
+    adj:  months.map((m) => list.reduce((s, r) => s + toCalcNumber(r[`month${m}_adjusted`]), 0)),
+  });
+  const sections = groupBySection(rows).map((s) => ({ ...s, total: total(s.rows) }));
+  const receipts = total(rows.filter((r) => r.sign >= 0));
+  const payments = total(rows.filter((r) => r.sign < 0));
+  const net = {
+    prev: receipts.prev - payments.prev,
+    ai:   receipts.ai.map((v, i) => v - payments.ai[i]),
+    adj:  receipts.adj.map((v, i) => v - payments.adj[i]),
+  };
+  const running = (list) => {
+    let cash = openingCash;
+    return list.map((v) => { const open = cash; cash += v; return { open, close: cash }; });
+  };
+  return { sections, receipts, payments, net, positionAi: running(net.ai), positionAdj: running(net.adj) };
+}
+
+const sumOf = (list) => list.reduce((s, v) => s + v, 0);
+
+// Green / red for an Adjusted value vs its AI value: a rise is good for a
+// receipt or the net change, bad for a payment.
+const cfTone = (adj, ai, sign = 1) => {
+  const better = sign < 0 ? adj < ai : adj > ai;
+  const worse  = sign < 0 ? adj > ai : adj < ai;
+  return better ? "text-emerald-600" : worse ? "text-red-500" : "text-sky-700";
+};
+
+// Search box, match count, "show empty lines" and the read-only notice — the
+// Revenue Forecast summary toolbar.
+function CfToolbar({ filterText, setFilterText, shown, total, showEmpty, setShowEmpty, canEdit, stage }) {
+  return (
+    <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          <FiSearch className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" size={12}/>
+          <input value={filterText} onChange={(e) => setFilterText(e.target.value)}
+            placeholder="Search line…"
+            className="pl-7 pr-3 py-1 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 outline-none focus:border-blue-500 focus:ring-2 ring-blue-100 transition-all w-48 shadow-sm"/>
+        </div>
+        {filterText && (
+          <button onClick={() => setFilterText("")}
+            className="flex items-center gap-1 text-x text-slate-500 hover:text-sky-700 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors">
+            <FiX size={12}/> Clear
+          </button>
+        )}
+        <span className="text-x text-slate-500 bg-white px-2.5 py-1 rounded-lg tabular-nums border border-slate-200">
+          {shown}/{total}
+        </span>
+        <label className="flex items-center gap-1.5 text-x text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200 cursor-pointer">
+          <input type="checkbox" checked={showEmpty} onChange={(e) => setShowEmpty(e.target.checked)} className="accent-sky-600"/>
+          Show empty lines
+        </label>
+      </div>
+      {!canEdit && (
+        <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-x font-semibold">
+          <FiAlertCircle size={12}/> Editing disabled — {STAGE_LABELS?.[stage] || stage}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A cash flow line's name cell: initials badge + name, as the Revenue
+// Forecast shows a customer.
+function CfLineName({ name, changed, rowBg }) {
+  return (
+    <td className={`px-3 py-1 pl-5 sticky left-0 border-r border-slate-200 z-[5] ${rowBg}`}>
+      <div className="flex items-center gap-1.5">
+        <div className={`w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold shrink-0 ${avatarClass(name)}`}>{getInitials(name)}</div>
+        <span className="font-semibold text-slate-900 text-xs leading-tight truncate" title={name}>{name}</span>
+        {changed && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" title="Has adjustments"/>}
+      </div>
+    </td>
+  );
+}
+
+const CF_TOTAL_STYLES = {
+  section:  { row: "bg-sky-50 text-sky-900", cell: "bg-sky-50" },
+  payments: { row: "bg-sky-100 text-sky-900", cell: "bg-sky-100" },
+  net:      { row: "bg-sky-900 text-white", cell: "bg-sky-900" },
+};
+
+function CashflowTable({ rows, months, canEdit, stage, cellComments, overallComments, onAdjChange, onAdjBlur, onCommentChange, onOverallChange, fmt, filterText, setFilterText, openingCash = 0 }) {
   // Key of the "Adjusted" cell currently focused. While focused we show the
   // raw, unrounded value (see displayEditableNumber) instead of fighting the
   // user's keystrokes with toFixed() rounding.
   const [focusedCellKey, setFocusedCellKey] = useState(null);
+  const [showEmpty, setShowEmpty] = useState(false);
   // Remembers each cell's value at focus time so onBlur can tell whether it
   // actually changed, for the parent's "apply to all 12 months" prompt.
   const focusValuesRef = useRef({});
-  const filtered = rows.filter((r) =>
-    r.component.toLowerCase().includes(filterText.toLowerCase()) ||
-    (r.category || "").toLowerCase().includes(filterText.toLowerCase())
-  );
+  const q = filterText.toLowerCase();
+  const matches = (r) =>
+    (r.label || r.component).toLowerCase().includes(q) ||
+    r.component.toLowerCase().includes(q) ||
+    (r.category || "").toLowerCase().includes(q);
+  const visible = (r) => matches(r) && (showEmpty || q || !isEmptyCfLine(r, months.length));
+  const shownCount = rows.filter(visible).length;
+  const agg = cfAggregates(rows, months.length, openingCash);
+  const lastPaymentSection = [...agg.sections].reverse().find((s) => s.sign < 0)?.key;
+  const netAiTotal = sumOf(agg.net.ai);
+  const netAdjTotal = sumOf(agg.net.adj);
+
+  // A non-editable totals row: label, prev month, AI / Adj per month, period.
+  const totalRow = (key, label, t, tone, last = null) => {
+    const st = CF_TOTAL_STYLES[tone];
+    const dark = tone === "net";
+    return (
+      <tr key={key} className={`border-b ${dark ? "border-sky-700" : "border-slate-200"} font-semibold ${st.row}`}>
+        <td className={`px-3 py-1.5 text-xs uppercase sticky left-0 border-r ${dark ? "border-sky-700" : "border-slate-200"} z-[9] ${st.cell}`}>{label}</td>
+        <td className="px-3 py-1.5 text-right tabular-nums text-xs">{t.prev != null ? fmt(t.prev) : ""}</td>
+        {months.map((_, mi) => (
+          <React.Fragment key={mi}>
+            <td className={`px-2 py-1.5 text-right tabular-nums text-xs border-l ${dark ? "border-sky-700 bg-sky-800" : "border-slate-200"}`}>{fmt(t.ai[mi])}</td>
+            <td className={`px-2 py-1.5 text-right tabular-nums text-xs font-bold ${dark ? "bg-sky-800" : ""}`}>{fmt(t.adj[mi])}</td>
+            <td className={`px-1 py-1.5 ${dark ? "bg-sky-800" : ""}`}/>
+          </React.Fragment>
+        ))}
+        <td className={`px-2 py-1.5 text-right tabular-nums text-xs border-l ${dark ? "border-sky-700" : "border-slate-200"}`}>{fmt(t.qAi ?? sumOf(t.ai))}</td>
+        <td className="px-2 py-1.5 text-right tabular-nums text-xs font-bold">{fmt(t.qAdj ?? sumOf(t.adj))}</td>
+        <td className={`px-2 py-1.5 border-l ${dark ? "border-sky-700" : "border-slate-200"}`}>{last}</td>
+      </tr>
+    );
+  };
+
+  const lineRow = (row, idx) => {
+    // toCalcNumber, not `|| 0`: an adjusted cell can hold the raw string the
+    // user is mid-typing, and `0 + "<string>"` concatenates instead of adding.
+    const qAi  = months.reduce((s, _, mi) => s+toCalcNumber(row[`month${mi+1}_ai`]), 0);
+    const qAdj = months.reduce((s, _, mi) => s+toCalcNumber(row[`month${mi+1}_adjusted`]), 0);
+    const rowBg = idx % 2 === 0 ? "bg-white" : "bg-slate-50/60";
+    const name = row.label || row.component;
+
+    return (
+      <tr key={row.component} className={`rf-row border-b border-slate-100 transition-colors hover:bg-sky-50/50 ${rowBg}`}>
+        <CfLineName name={name} changed={qAdj !== qAi} rowBg={rowBg}/>
+        <td className="px-3 py-1 text-right tabular-nums text-xs text-slate-500">{fmt(row.previous_month)}</td>
+
+        {months.map((_, mi) => {
+          const m   = mi + 1;
+          const ai  = row[`month${m}_ai`];
+          const adj = row[`month${m}_adjusted`];
+          const cellChanged = toCalcNumber(adj) !== toCalcNumber(ai) && ai != null;
+          const cellKey = `${row.component}-month${m}`;
+          const th  = CF_MONTH_THEME[mi % CF_MONTH_THEME.length];
+          return (
+            <React.Fragment key={m}>
+              <td className={`px-2 py-1 text-right text-xs text-slate-500 tabular-nums border-l border-slate-100 ${th.bg}`}>{fmt(ai)}</td>
+              <td className={`px-1.5 py-1 ${th.bg}`}>
+                <input type="number" value={displayEditableNumber(adj, focusedCellKey === cellKey)} step={Math.pow(10, -getDecimalPrecision())} disabled={!canEdit}
+                  onFocus={(e) => { setFocusedCellKey(cellKey); focusValuesRef.current[cellKey] = adj; e.target.select(); }}
+                  onBlur={() => {
+                    setFocusedCellKey(null);
+                    const startVal = focusValuesRef.current[cellKey];
+                    delete focusValuesRef.current[cellKey];
+                    onAdjBlur?.(row.component, m, startVal);
+                  }}
+                  onChange={(e) => onAdjChange(row.component, `month${m}_adjusted`, e.target.value)}
+                  className={`w-full px-1.5 py-0.5 rounded-md border text-right text-xs tabular-nums outline-none transition-all
+                    ${!canEdit?"bg-slate-50 text-slate-400 cursor-not-allowed border-slate-200"
+                      :cellChanged?"border-blue-400 bg-blue-50 text-blue-900 focus:ring-2 ring-blue-100"
+                      :"border-slate-300 bg-white hover:border-slate-400 focus:border-blue-500 focus:ring-2 ring-blue-100"}`}/>
+              </td>
+              <td className={`px-1 py-1 relative text-center ${th.bg}`}>
+                <InlineCommentIcon
+                  commentKey={cellKey}
+                  value={cellComments[cellKey] || ""}
+                  disabled={!canEdit}
+                  onChange={(v) => onCommentChange(cellKey, v)}
+                  label={`${name} — ${months[mi]}`}
+                />
+              </td>
+            </React.Fragment>
+          );
+        })}
+
+        <td className="px-2 py-1 text-right text-xs text-slate-500 tabular-nums border-l border-slate-200 bg-slate-50/60">{fmt(qAi)}</td>
+        <td className={`px-2 py-1 text-right text-xs font-bold tabular-nums ${cfTone(qAdj, qAi, row.sign)}`}>{fmt(qAdj)}</td>
+
+        <td className="px-1 py-1 text-center border-l border-slate-100">
+          <InlineCommentIcon
+            commentKey={`overall-${row.component}`}
+            value={overallComments[row.component] || ""}
+            disabled={!canEdit}
+            onChange={(v) => onOverallChange(row.component, v)}
+            label={`${name} — Overall Note`}
+            isOverall
+          />
+        </td>
+      </tr>
+    );
+  };
+
+  const body = [];
+  agg.sections.forEach((sec) => {
+    const titles = CF_SECTION_TITLES[sec.key] || { heading: sec.label, total: `Total ${sec.label}` };
+    const shown = sec.rows.filter(visible);
+    body.push(
+      <tr key={`h-${sec.key}`} className="border-b border-slate-200 bg-slate-100">
+        <td colSpan={99} className="sticky left-0 px-3 py-1 text-xs font-bold uppercase tracking-wide text-sky-800">
+          {titles.heading}
+          {shown.length < sec.rows.length && (
+            <span className="ml-2 font-medium normal-case tracking-normal text-slate-500">
+              {shown.length} of {sec.rows.length} lines shown
+            </span>
+          )}
+        </td>
+      </tr>,
+    );
+    shown.forEach((r, i) => body.push(lineRow(r, i)));
+    body.push(totalRow(`t-${sec.key}`, titles.total, sec.total, "section"));
+    if (sec.key === lastPaymentSection) body.push(totalRow("t-payments", "Total Cash Payments", agg.payments, "payments"));
+  });
+
+  const variance = netAdjTotal - netAiTotal;
+  const varPct = netAiTotal ? ((variance / Math.abs(netAiTotal)) * 100).toFixed(getDecimalPrecision()) : "0.0";
 
   return (
     <div>
-      {/* Toolbar */}
-      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <FiSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13}/>
-            <input
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              placeholder="Search component or category…"
-              className="w-[220px] rounded-lg border border-slate-300 bg-white py-1 pl-8 pr-2.5 text-x outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            />
-          </div>
-          {filterText && (
-            <button onClick={() => setFilterText("")} className="flex cursor-pointer items-center gap-1 bg-transparent  text-slate-500">
-              <FiX size={12}/> Clear
-            </button>
-          )}
-          <span className="rounded-full bg-sky-100 px-2.5 py-[3px] text-xs font-bold text-sky-700">
-            {filtered.length}/{rows.length}
-          </span>
-          {!canEdit && (
-            <span className="flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1  font-semibold text-amber-700">
-              <FiAlertCircle size={12}/> Read-only
-            </span>
-          )}
+      <CfToolbar filterText={filterText} setFilterText={setFilterText} shown={shownCount} total={rows.length}
+        showEmpty={showEmpty} setShowEmpty={setShowEmpty} canEdit={canEdit} stage={stage}/>
+
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible">
+        <div className="analytics-table-scroll relative overflow-x-auto max-h-[72vh] overflow-y-auto">
+          <table className="relative w-full min-w-[1300px] border-collapse text-sm">
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-sky-800 border-b border-sky-700">
+                <th rowSpan={2} className="px-3 py-1.5 text-left text-xs font-semibold text-white uppercase tracking-wide border-r border-sky-700 sticky left-0 bg-sky-800 z-30 min-w-[230px]">Cash Flow Line</th>
+                <th rowSpan={2} className="px-3 py-1.5 text-right text-xs font-semibold text-white uppercase tracking-wide min-w-[90px]">Prev Month</th>
+                {months.map((m) => (
+                  <th key={m} colSpan={3} className="px-3 py-1.5 text-center text-xs font-semibold border-l text-white border-sky-700 bg-sky-800">{m}</th>
+                ))}
+                <th colSpan={2} className="px-3 py-1.5 text-center text-xs font-semibold text-slate-50 border-l border-sky-700 bg-sky-900">
+                  {months.length === 3 ? "Quarter Total" : "Period Total"}
+                </th>
+                <th className="px-3 py-1.5 text-center text-xs font-semibold text-slate-50 border-l border-sky-700 bg-sky-800 min-w-[70px]">Note</th>
+              </tr>
+              <tr className="bg-sky-700 border-b border-slate-600 sticky top-[28px] z-10">
+                {months.map((m) => (
+                  <React.Fragment key={m}>
+                    <th className="px-2 py-1 text-right text-xs font-medium text-slate-100 uppercase border-l border-slate-600 min-w-[75px]">AI</th>
+                    <th className="px-2 py-1 text-right text-xs font-semibold text-white uppercase min-w-[85px]">Adjusted</th>
+                    <th className="px-1 py-1 text-center text-xs font-medium text-slate-100 uppercase min-w-[36px]">
+                      <FiMessageSquare size={11} className="mx-auto opacity-70"/>
+                    </th>
+                  </React.Fragment>
+                ))}
+                <th className="px-2 py-1 text-right text-xs font-medium text-white uppercase border-l border-slate-600 min-w-[75px]">AI</th>
+                <th className="px-2 py-1 text-right text-xs font-semibold text-white uppercase min-w-[75px]">Adj</th>
+                <th className="px-1 py-1 text-center border-l border-slate-600 text-white">
+                  <FiMessageSquare size={11} className="mx-auto opacity-70"/>
+                </th>
+              </tr>
+            </thead>
+            <tbody className="text-sm">
+              {totalRow("cash-open", "Cash on Hand (Beginning of Month)", {
+                prev: null,
+                ai: agg.positionAi.map((p) => p.open),
+                adj: agg.positionAdj.map((p) => p.open),
+                qAi: openingCash,
+                qAdj: openingCash,
+              }, "section")}
+              {shownCount === 0 && (
+                <tr><td colSpan={99}><EmptyState label="No lines match your search."/></td></tr>
+              )}
+              {body}
+            </tbody>
+            {/* Net change and cash position — all lines, whatever the search. */}
+            <tfoot className="sticky bottom-0 z-10">
+              {totalRow("net", "Net Cash Change", agg.net, "net", (
+                <span className={`text-xs font-bold tabular-nums ${variance >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {variance >= 0 ? "+" : ""}{fmt(variance)} ({varPct}%)
+                </span>
+              ))}
+              {totalRow("cash-close", "Month-Ending Cash Position", {
+                prev: openingCash,
+                ai: agg.positionAi.map((p) => p.close),
+                adj: agg.positionAdj.map((p) => p.close),
+                qAi: agg.positionAi.length ? agg.positionAi[agg.positionAi.length - 1].close : openingCash,
+                qAdj: agg.positionAdj.length ? agg.positionAdj[agg.positionAdj.length - 1].close : openingCash,
+              }, "net")}
+            </tfoot>
+          </table>
         </div>
-      </div>
-
-      {/* Table */}
-      <div className="analytics-table-scroll max-h-[72vh] overflow-auto rounded-[14px] border border-sky-100 bg-white shadow-sm">
-        <table className="w-full min-w-[1300px] border-collapse ">
-          <thead className="sticky top-0 z-20">
-            <tr className="border-b border-sky-700 bg-sky-800">
-              <th rowSpan={2} className="sticky left-0 z-30 min-w-[200px] border-r border-sky-700 bg-sky-800 px-3.5 py-[9px] text-left text-xs font-extrabold uppercase tracking-[0.5px] text-sky-200">
-                Category
-              </th>
-              <th rowSpan={2} className="min-w-[110px] px-3 py-[9px] text-left text-xs font-bold uppercase tracking-[0.5px] text-sky-200">
-                
-              </th>
-              <th rowSpan={2} className="min-w-[100px] px-3 py-[9px] text-right tabular-nums text-xs font-bold uppercase text-sky-200">
-                Prev Month
-              </th>
-              {months.map((m) => (
-                <th key={m} colSpan={3} className="border-l border-sky-700 px-3 py-[9px] text-center  font-bold text-white">{m}</th>
-              ))}
-              <th colSpan={2} className="border-l border-sky-700 bg-sky-900 px-3 py-[9px] text-center text-xs font-bold text-sky-200">Qtr Total</th>
-              <th className="min-w-[130px] border-l border-sky-700 px-3 py-[9px] text-center text-xs font-bold text-sky-200">Overall Note</th>
-            </tr>
-            <tr className="sticky top-[34px] z-[19] border-b border-sky-600 bg-sky-700">
-              {months.map((m) => (
-                <React.Fragment key={m}>
-                  <th className="min-w-[80px] border-l border-sky-600 px-2.5 py-[5px] text-right  font-bold uppercase text-sky-200">AI</th>
-                  <th className="min-w-[100px] px-2.5 py-[5px] text-right  font-extrabold uppercase text-white">Adjusted</th>
-                  <th className="min-w-[42px] px-2 py-[5px] text-center font-bold uppercase text-sky-200">
-                    <FiMessageSquare size={11} className="mx-auto opacity-70"/>
-                  </th>
-                </React.Fragment>
-              ))}
-              <th className="min-w-[80px] border-l border-sky-600 px-2.5 py-[5px] text-right  font-bold uppercase text-sky-200">AI</th>
-              <th className="min-w-[80px] px-2.5 py-[5px] text-right  font-extrabold uppercase text-white">Adj</th>
-              <th className="border-l border-sky-600 px-2 py-[5px]" />
-            </tr>
-          </thead>
-          <tbody className="text-sm">
-            {filtered.length === 0
-              ? <tr><td colSpan={99} className="text-center py-8 text-slate-400">No components match your search.</td></tr>
-              : filtered.map((row, idx) => {
-                  const cc   = catColor(row.component);
-                  // toCalcNumber, not `|| 0`: an adjusted cell can hold the raw string the
-                  // user is mid-typing, and `0 + "<string>"` concatenates instead of adding.
-                  const qAi  = months.reduce((s, _, mi) => s+toCalcNumber(row[`month${mi+1}_ai`]), 0);
-                  const qAdj = months.reduce((s, _, mi) => s+toCalcNumber(row[`month${mi+1}_adjusted`]), 0);
-                  const changed = qAdj !== qAi;
-                  const bg   = idx % 2 === 0 ? "bg-white" : "bg-sky-50";
-
-                  return (
-                    <tr key={row.component} className={`cf-row border-b border-sky-50 ${bg}`}>
-                      {/* Sticky component name */}
-                      <td className={`px-3.5 py-2 sticky left-0 bg-white border-r border-sky-100 z-5 ${bg}`}>
-                        <div className="flex items-center gap-2">
-                          {/* <div style={{ width: 10, height: 28, borderRadius: 3, background: cc.dot, flexShrink: 0 }}/> */}
-                          <div>
-                            <div className="font-bold text-sky-900">{row.component}</div>
-                            {row.label && row.label !== row.component && (
-                              <div className="text-slate-500">{row.label}</div>
-                            )}
-                          </div>
-                          {changed && <span className="w-1.5 h-1.5 rounded-full bg-sky-600 flex-shrink-0" title="Has adjustments"/>}
-                        </div>
-                      </td>
-
-                      {/* Category */}
-                      <td className={`px-3 py-2 ${bg}`}>
-                        {row.category && (
-                          <span className="px-2 py-0.5 rounded-full font-bold" style={{ background: cc.badge, color: cc.badgeText, border: `1px solid ${cc.badgeText}22` }}>
-                            {row.category}
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Prev month */}
-                      <td className={`px-3 py-2 text-right tabular-nums text-slate-600 ${bg}`}>
-                        {fmt(row.previous_month)}
-                      </td>
-
-                      {/* Per-month columns (dynamic) */}
-                      {months.map((_, mi) => {
-                        const m   = mi + 1;
-                        const ai  = row[`month${m}_ai`];
-                        const adj = row[`month${m}_adjusted`];
-                        const cellChanged = adj !== ai && ai != null;
-                        const ck  = `${row.component}-month${m}`;
-                        const cellKey = `${row.component}-month${m}`;
-                        return (
-                          <React.Fragment key={m}>
-                            <td className={`px-2.5 py-2 text-right tabular-nums text-slate-600 border-l border-sky-50 ${bg}`}>
-                              {fmt(ai)}
-                            </td>
-                            <td className={`px-2 py-1.5 ${bg}`}>
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                value={displayAdjustedCommaCF(adj, focusedCellKey === cellKey)}
-                                disabled={!canEdit}
-                                onFocus={(e) => { setFocusedCellKey(cellKey); focusValuesRef.current[cellKey] = adj; e.target.select(); }}
-                                onBlur={() => {
-                                  setFocusedCellKey(null);
-                                  const startVal = focusValuesRef.current[cellKey];
-                                  delete focusValuesRef.current[cellKey];
-                                  onAdjBlur?.(row.component, m, startVal);
-                                }}
-                                onChange={(e) => onAdjChange(row.component, `month${m}_adjusted`, e.target.value.replace(/[^0-9.-]/g, ""))}
-                                className={`adj-input-cf${cellChanged ? " changed" : ""}`}
-                              />
-                            </td>
-                            <td className={`px-1 py-1.5 text-center ${bg}`}>
-                              <InlineCommentIcon
-                                commentKey={ck}
-                                value={cellComments[ck] || ""}
-                                disabled={!canEdit}
-                                onChange={(v) => onCommentChange(ck, v)}
-                                label={`${row.component} — month ${m}`}
-                              />
-                            </td>
-                          </React.Fragment>
-                        );
-                      })}
-
-                      {/* Quarter totals */}
-                      <td className="px-2.5 py-2 text-right tabular-nums text-sky-600 font-bold border-l border-sky-100 bg-sky-50">
-                        {fmt(qAi)}
-                      </td>
-                      <td className={`px-2.5 py-2 text-right tabular-nums font-bold bg-sky-50 ${qAdj > qAi ? "text-emerald-600" : qAdj < qAi ? "text-rose-600" : "text-sky-900"}`}>
-                        {fmt(qAdj)}
-                      </td>
-
-                      {/* Overall note */}
-                      <td className={`px-2 py-1.5 border-l border-sky-50 ${bg}`}>
-                        <input
-                          type="text"
-                          value={overallComments[row.component] || ""}
-                          disabled={!canEdit}
-                          placeholder="overall note"
-                          onChange={(e) => onOverallChange(row.component, e.target.value)}
-                          className="note-input-cf w-[130px]"
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-          </tbody>
-
-          {/* Grand total footer */}
-          {filtered.length > 0 && (() => {
-            const monthTotals = months.map((_, mi) => ({
-              ai:  filtered.reduce((s,r) => s+toCalcNumber(r[`month${mi+1}_ai`]), 0),
-              adj: filtered.reduce((s,r) => s+toCalcNumber(r[`month${mi+1}_adjusted`]), 0),
-            }));
-            const qAiT  = monthTotals.reduce((s, t) => s + t.ai,  0);
-            const qAdjT = monthTotals.reduce((s, t) => s + t.adj, 0);
-            const vari  = qAdjT - qAiT;
-            return (
-              <tfoot>
-                <tr className="bg-sky-900 text-white sticky bottom-0 z-10">
-                  <td className="px-3.5 py-2.5 font-bold sticky left-0 bg-sky-900 border-r border-sky-700 z-20">GRAND TOTAL</td>
-                  <td className="bg-sky-900"/>
-                  <td className="bg-sky-900"/>
-                  {monthTotals.map(({ ai, adj }, i) => (
-                    <React.Fragment key={i}>
-                      <td className="px-2.5 py-2.5 text-right tabular-nums text-sky-200 border-l border-sky-700 bg-sky-800">{fmt(ai)}</td>
-                      <td className="px-2.5 py-2.5 text-right tabular-nums font-bold text-white bg-sky-800">{fmt(adj)}</td>
-                      <td className="bg-sky-800"/>
-                    </React.Fragment>
-                  ))}
-                  <td className="px-2.5 py-2.5 text-right tabular-nums text-sky-200 border-l border-sky-700">{fmt(qAiT)}</td>
-                  <td className="px-2.5 py-2.5 text-right tabular-nums font-bold text-white">{fmt(qAdjT)}</td>
-                  <td className="px-2.5 py-2.5 border-l border-sky-700">
-                    <span className="tabular-nums font-bold" style={{ color: vari >= 0 ? "#6ee7b7" : "#fca5a5" }}>
-                      {vari >= 0 ? "▲" : "▼"} {fmt(Math.abs(vari))}
-                    </span>
-                  </td>
-                </tr>
-              </tfoot>
-            );
-          })()}
-        </table>
       </div>
     </div>
   );
 }
 
 // ─── Drivers Tab ──────────────────────────────────────────────────────────────
-function DriversTab({ rows, months, monthPeriods, quarterGroups, viewType, canEdit, fmt, driverAdj = {}, onDriverChange }) {
+function DriversTab({ rows, months, monthPeriods, quarterGroups, viewType, canEdit, fmt, driverAdj = {}, onDriverChange, onDriverCommentChange }) {
   // Key of the units/rate "Adjusted" cell currently focused. While focused,
   // show the raw typed value so a not-yet-finished decimal isn't rounded
   // off mid-keystroke.
   const [focusedCellKey, setFocusedCellKey] = useState(null);
-
-  const updateDriver = (comp, monthKey, field, val) => {
-    onDriverChange?.(comp, monthKey, field, val);
-  };
 
   const getMonthAdj = (row, mi) => {
     const monthKey = (monthPeriods && monthPeriods[mi]) || months[mi];
@@ -576,415 +757,480 @@ function DriversTab({ rows, months, monthPeriods, quarterGroups, viewType, canEd
     return { monthKey, drv, aiVal, unitsAi, rateAi, unitsAdj, rateAdj, cfAdj: unitsAdj * rateAdj };
   };
 
-  /* ── Quarter Summary — compact: one CF AI + CF Adj column per quarter ── */
+  const inputCls = `w-20 px-2 py-1 rounded-lg border text-right text-x tabular-nums outline-none transition-all
+    ${!canEdit ? "bg-slate-50 border-slate-200 cursor-not-allowed text-slate-400" : "border-slate-300 bg-white hover:border-slate-400 focus:border-blue-500 focus:ring-2 ring-blue-100"}`;
+
+  if (!rows.length) return <EmptyState label="No driver data available for this period."/>;
+
+  /* ── Quarter Summary — one CF AI + CF Adj column per quarter ── */
   if (viewType === "quarter_summary") {
     return (
-      <div className="analytics-table-scroll rounded-xl border border-sky-100 bg-white overflow-auto max-h-[60vh] shadow-sm">
-        <table className="w-full border-collapse text-xs">
-          <thead>
-            <tr className="bg-sky-800 border-b border-sky-700 sticky top-0 z-20">
-              <th className="sticky left-0 z-30 bg-sky-800 px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wide border-r border-sky-700 min-w-[180px]">Component</th>
-              {(quarterGroups || []).map((qg) => (
-                <th key={qg.key} colSpan={2} className="px-4 py-2.5 text-center text-xs font-semibold text-white border-l border-sky-700 bg-sky-800">{qg.label}</th>
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible">
+        <div className="analytics-table-scroll overflow-x-auto max-h-[66vh] overflow-y-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-sky-800 border-b border-sky-700">
+                <th className="sticky left-0 z-30 bg-sky-800 px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wide border-r border-sky-700 min-w-[200px]">Cash Flow Line</th>
+                {(quarterGroups || []).map((qg) => (
+                  <th key={qg.key} colSpan={2} className="px-4 py-2.5 text-center text-x font-semibold text-white border-l border-sky-700 bg-sky-800">{qg.label}</th>
+                ))}
+                <th colSpan={2} className="px-4 py-2.5 text-center text-x font-semibold text-white border-l border-sky-700 bg-sky-900">Total CF</th>
+              </tr>
+              <tr className="bg-sky-700 border-b border-slate-600 sticky top-[44px] z-10">
+                <th className="sticky left-0 z-30 bg-sky-700 border-r border-slate-600"></th>
+                {(quarterGroups || []).map((qg) => (
+                  <React.Fragment key={qg.key}>
+                    <th className="px-3 py-2 text-xs font-medium text-white uppercase border-l border-slate-600 text-right whitespace-nowrap">CF AI</th>
+                    <th className="px-3 py-2 text-xs font-semibold text-white uppercase text-right whitespace-nowrap">CF Adj</th>
+                  </React.Fragment>
+                ))}
+                <th className="px-3 py-2 text-right text-xs font-medium text-white uppercase border-l border-slate-600">AI</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold text-white uppercase">Adj</th>
+              </tr>
+            </thead>
+            <tbody className="text-sm">
+              {rows.map((row, rowIdx) => {
+                const qCFs = (quarterGroups || []).map((qg) => ({
+                  key: qg.key,
+                  ai:  qg.monthIdxs.reduce((s, mi) => s + (row[`month${mi + 1}_ai`] || 0), 0),
+                  adj: qg.monthIdxs.reduce((s, mi) => s + getMonthAdj(row, mi).cfAdj, 0),
+                }));
+                const totalAi  = qCFs.reduce((s, q) => s + q.ai,  0);
+                const totalAdj = qCFs.reduce((s, q) => s + q.adj, 0);
+                const name = row.label || row.component;
+                return (
+                  <tr key={row.component} className={`rf-row border-b border-slate-100 transition-colors ${rowIdx % 2 === 0 ? "bg-white" : "bg-slate-50/60"}`}>
+                    <td className="sticky left-0 z-[5] border-r border-slate-200 px-4 py-2.5 bg-white">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${avatarClass(name)}`}>{getInitials(name)}</div>
+                        <span className="font-bold text-slate-900 text-x whitespace-nowrap">{name}</span>
+                      </div>
+                    </td>
+                    {qCFs.map((qc, qi) => (
+                      <React.Fragment key={qc.key}>
+                        <td className={`px-3 py-2 text-right text-x text-slate-500 tabular-nums border-l border-slate-100 ${CF_MONTH_THEME[qi % CF_MONTH_THEME.length].bg}`}>{fmt(qc.ai)}</td>
+                        <td className={`px-3 py-2 text-right text-x font-bold tabular-nums ${CF_MONTH_THEME[qi % CF_MONTH_THEME.length].bg} ${cfTone(qc.adj, qc.ai, row.sign)}`}>{fmt(qc.adj)}</td>
+                      </React.Fragment>
+                    ))}
+                    <td className="px-3 py-2 text-right text-x text-slate-500 tabular-nums border-l border-slate-200 bg-slate-50">{fmt(totalAi)}</td>
+                    <td className={`px-3 py-2 text-right text-x font-bold tabular-nums ${cfTone(totalAdj, totalAi, row.sign)}`}>{fmt(totalAdj)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  /* ── Monthly Breakdown — lines as rows, months as columns ── */
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible">
+      <div className="analytics-table-scroll overflow-x-auto max-h-[66vh] overflow-y-auto">
+        <table className="w-full min-w-[1600px] border-collapse text-sm">
+          <thead className="sticky top-0 z-20">
+            <tr className="bg-sky-800 border-b border-sky-700">
+              <th className="sticky left-0 z-30 bg-sky-800 px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wide border-r border-sky-700 min-w-[200px]">Cash Flow Line</th>
+              {months.map((m) => (
+                <th key={m} colSpan={7} className="px-4 py-2.5 text-center text-x font-semibold text-white border-l border-sky-700 bg-sky-800">{m}</th>
               ))}
-              <th colSpan={2} className="px-4 py-2.5 text-center text-xs font-semibold text-white border-l border-sky-700 bg-sky-900">Total CF</th>
+              <th colSpan={2} className="px-4 py-2.5 text-center text-x font-semibold text-white border-l border-sky-700 bg-sky-900">
+                {months.length === 3 ? "Quarter CF" : "Period CF"}
+              </th>
             </tr>
-            <tr className="bg-sky-700 border-b border-sky-600 sticky top-[44px] z-10">
-              <th className="sticky left-0 z-30 bg-sky-700 border-r border-sky-600"></th>
-              {(quarterGroups || []).map((qg) => (
-                <React.Fragment key={qg.key}>
-                  <th className="px-3 py-2 text-xs font-medium text-white uppercase border-l border-sky-600 text-right whitespace-nowrap">CF AI</th>
-                  <th className="px-3 py-2 text-xs font-semibold text-white uppercase text-right whitespace-nowrap">CF Adj</th>
+            <tr className="bg-sky-700 border-b border-slate-600 sticky top-[44px] z-10">
+              <th className="sticky left-0 z-30 bg-sky-700 border-r border-slate-600"></th>
+              {months.map((m) => (
+                <React.Fragment key={m}>
+                  {["Units AI", "Units Adj", "Rate AI", "Rate Adj", "CF AI", "CF Adj", ""].map((h, hi) => (
+                    <th key={hi} className={`px-3 py-2 text-xs font-medium text-white uppercase whitespace-nowrap
+                      ${hi === 0 ? "border-l border-slate-600 text-right" : hi === 6 ? "text-center w-10" : "text-right"}`}>
+                      {hi === 6 ? <FiMessageSquare size={11} className="mx-auto opacity-70"/> : h}
+                    </th>
+                  ))}
                 </React.Fragment>
               ))}
-              <th className="px-3 py-2 text-xs font-medium text-white uppercase border-l border-sky-600 text-right">AI</th>
-              <th className="px-3 py-2 text-xs font-semibold text-white uppercase text-right">Adj</th>
+              <th className="px-3 py-2 text-right text-xs font-medium text-white uppercase border-l border-slate-600">AI</th>
+              <th className="px-3 py-2 text-right text-xs font-semibold text-white uppercase">Adj</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="text-sm">
             {rows.map((row, rowIdx) => {
-              const isEven = rowIdx % 2 === 0;
-              const qCFs = (quarterGroups || []).map((qg) => {
-                const ai  = qg.monthIdxs.reduce((s, mi) => s + (row[`month${mi + 1}_ai`] || 0), 0);
-                const adj = qg.monthIdxs.reduce((s, mi) => s + getMonthAdj(row, mi).cfAdj, 0);
-                return { key: qg.key, ai, adj };
+              let totalAi = 0, totalAdj = 0;
+              const name = row.label || row.component;
+              const cells = months.map((m, mi) => {
+                const { monthKey, drv, aiVal, unitsAi, rateAi, unitsAdj, rateAdj, cfAdj } = getMonthAdj(row, mi);
+                totalAi  += aiVal;
+                totalAdj += cfAdj;
+                const th = CF_MONTH_THEME[mi % CF_MONTH_THEME.length];
+                const unitsCellKey = `${row.component}-${monthKey}-units`;
+                const rateCellKey  = `${row.component}-${monthKey}-rate`;
+                return (
+                  <React.Fragment key={m}>
+                    <td className={`px-3 py-2 text-right text-x text-slate-500 tabular-nums border-l border-slate-100 ${th.bg}`}>{unitsAi}</td>
+                    <td className={`px-2 py-1.5 ${th.bg}`}>
+                      <input type="number" placeholder="units" disabled={!canEdit}
+                        value={focusedCellKey === unitsCellKey ? (drv.unitsAdj ?? "") : (unitsAdj !== unitsAi ? unitsAdj : "")}
+                        onFocus={(e) => { setFocusedCellKey(unitsCellKey); e.target.select(); }}
+                        onBlur={() => setFocusedCellKey(null)}
+                        onChange={(e) => onDriverChange?.(row.component, monthKey, "unitsAdj", e.target.value)}
+                        className={inputCls}/>
+                    </td>
+                    <td className={`px-3 py-2 text-right text-x text-slate-500 tabular-nums ${th.bg}`}>{rateAi}</td>
+                    <td className={`px-2 py-1.5 ${th.bg}`}>
+                      <input type="number" placeholder="rate" disabled={!canEdit}
+                        value={focusedCellKey === rateCellKey ? (drv.rateAdj ?? "") : (rateAdj !== rateAi ? rateAdj : "")}
+                        onFocus={(e) => { setFocusedCellKey(rateCellKey); e.target.select(); }}
+                        onBlur={() => setFocusedCellKey(null)}
+                        onChange={(e) => onDriverChange?.(row.component, monthKey, "rateAdj", e.target.value)}
+                        className={inputCls}/>
+                    </td>
+                    <td className={`px-3 py-2 text-right text-x text-sky-700 font-semibold tabular-nums ${th.bg}`}>{fmt(aiVal)}</td>
+                    <td className={`px-3 py-2 text-right text-x font-bold tabular-nums ${th.bg} ${cfTone(cfAdj, aiVal, row.sign)}`}>{fmt(cfAdj)}</td>
+                    <td className={`px-1.5 py-1.5 text-center ${th.bg}`}>
+                      <InlineCommentIcon
+                        commentKey={`drv-${row.component}-${monthKey}`}
+                        value={drv.monthComment || ""}
+                        disabled={!canEdit}
+                        onChange={(v) => onDriverCommentChange?.(row.component, monthKey, v)}
+                        label={`${name} — ${m}`}
+                      />
+                    </td>
+                  </React.Fragment>
+                );
               });
-              const totalAi  = qCFs.reduce((s, q) => s + q.ai,  0);
-              const totalAdj = qCFs.reduce((s, q) => s + q.adj, 0);
               return (
-                <tr key={row.component} className={`border-b border-sky-50 ${isEven ? "bg-white" : "bg-sky-50/40"}`}>
-                  <td className="sticky left-0 z-[5] border-r border-sky-200 px-4 py-2.5 bg-white">
-                    <div className="font-bold text-sky-900">{row.component}</div>
-                    {row.label && <div className="text-xs text-slate-500">{row.label}</div>}
+                <tr key={row.component} className={`rf-row border-b border-slate-100 transition-colors ${rowIdx % 2 === 0 ? "bg-white" : "bg-slate-50/60"}`}>
+                  <td className="sticky left-0 z-[5] border-r border-slate-200 px-4 py-2.5 bg-white">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${avatarClass(name)}`}>{getInitials(name)}</div>
+                      <span className="font-bold text-slate-900 text-x whitespace-nowrap">{name}</span>
+                    </div>
                   </td>
-                  {qCFs.map((qc) => (
-                    <React.Fragment key={qc.key}>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-600 border-l border-sky-100">{fmt(qc.ai)}</td>
-                      <td className={`px-3 py-2 text-right tabular-nums font-bold ${qc.adj < qc.ai ? "text-rose-600" : "text-emerald-600"}`}>{fmt(qc.adj)}</td>
-                    </React.Fragment>
-                  ))}
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-600 border-l border-sky-200 bg-sky-50">{fmt(totalAi)}</td>
-                  <td className={`px-3 py-2 text-right tabular-nums font-bold ${totalAdj < totalAi ? "text-rose-600" : "text-emerald-600"}`}>{fmt(totalAdj)}</td>
+                  {cells}
+                  <td className="px-3 py-2 text-right text-x text-slate-500 tabular-nums border-l border-slate-200 bg-slate-50">{fmt(totalAi)}</td>
+                  <td className={`px-3 py-2 text-right text-x font-bold tabular-nums ${cfTone(totalAdj, totalAi, row.sign)}`}>{fmt(totalAdj)}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-    );
-  }
-
-  /* ── Monthly Breakdown — horizontal: components as rows, months as columns ── */
-  return (
-    <div className="analytics-table-scroll rounded-xl border border-sky-100 bg-white overflow-auto max-h-[60vh] shadow-sm">
-      <table className="w-full border-collapse text-xs">
-        <thead>
-          <tr className="bg-sky-800 border-b border-sky-700 sticky top-0 z-20">
-            <th className="sticky left-0 z-30 bg-sky-800 px-4 py-3 text-left text-xs font-semibold text-white uppercase tracking-wide border-r border-sky-700 min-w-[180px]">Component</th>
-            {months.map((m) => (
-              <th key={m} colSpan={6} className="px-4 py-2.5 text-center text-xs font-semibold text-white border-l border-sky-700 bg-sky-800">{m}</th>
-            ))}
-            <th colSpan={2} className="px-4 py-2.5 text-center text-xs font-semibold text-white border-l border-sky-700 bg-sky-900">Total CF</th>
-          </tr>
-          <tr className="bg-sky-700 border-b border-sky-600 sticky top-[44px] z-10">
-            <th className="sticky left-0 z-30 bg-sky-700 border-r border-sky-600"></th>
-            {months.map((m) => (
-              <React.Fragment key={m}>
-                <th className="px-2 py-2 text-xs font-medium text-white uppercase border-l border-sky-600 text-right whitespace-nowrap">Units AI</th>
-                <th className="px-2 py-2 text-xs font-medium text-white uppercase text-right whitespace-nowrap">Units Adj</th>
-                <th className="px-2 py-2 text-xs font-medium text-white uppercase text-right whitespace-nowrap">Rate AI</th>
-                <th className="px-2 py-2 text-xs font-medium text-white uppercase text-right whitespace-nowrap">Rate Adj</th>
-                <th className="px-2 py-2 text-xs font-medium text-white uppercase text-right whitespace-nowrap">CF AI</th>
-                <th className="px-2 py-2 text-xs font-semibold text-white uppercase text-right whitespace-nowrap">CF Adj</th>
-              </React.Fragment>
-            ))}
-            <th className="px-3 py-2 text-xs font-medium text-white uppercase border-l border-sky-600 text-right">AI</th>
-            <th className="px-3 py-2 text-xs font-semibold text-white uppercase text-right">Adj</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, rowIdx) => {
-            const isEven = rowIdx % 2 === 0;
-            let totalAi = 0, totalAdj = 0;
-            const cells = months.map((m, mi) => {
-              const { monthKey, drv, aiVal, unitsAi, rateAi, unitsAdj, rateAdj, cfAdj } = getMonthAdj(row, mi);
-              totalAi  += aiVal;
-              totalAdj += cfAdj;
-              const unitsCellKey = `${row.component}-${monthKey}-units`;
-              const rateCellKey  = `${row.component}-${monthKey}-rate`;
-              const unitsFocused = focusedCellKey === unitsCellKey;
-              const rateFocused  = focusedCellKey === rateCellKey;
-              return (
-                <React.Fragment key={m}>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-slate-500 border-l border-sky-100">{unitsAi}</td>
-                  <td className="px-1.5 py-1.5">
-                    <input type="number"
-                      value={unitsFocused ? (drv.unitsAdj ?? "") : (unitsAdj !== unitsAi ? unitsAdj : "")}
-                      placeholder="units" disabled={!canEdit}
-                      onFocus={(e) => { setFocusedCellKey(unitsCellKey); e.target.select(); }}
-                      onBlur={() => setFocusedCellKey(null)}
-                      onChange={(e) => updateDriver(row.component, monthKey, "unitsAdj", e.target.value)}
-                      className="w-16 px-1.5 py-1 rounded border border-sky-200 text-xs tabular-nums text-right outline-none disabled:bg-sky-50 disabled:cursor-not-allowed"/>
-                  </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">{rateAi}</td>
-                  <td className="px-1.5 py-1.5">
-                    <input type="number"
-                      value={rateFocused ? (drv.rateAdj ?? "") : (rateAdj !== rateAi ? rateAdj : "")}
-                      placeholder="rate" disabled={!canEdit}
-                      onFocus={(e) => { setFocusedCellKey(rateCellKey); e.target.select(); }}
-                      onBlur={() => setFocusedCellKey(null)}
-                      onChange={(e) => updateDriver(row.component, monthKey, "rateAdj", e.target.value)}
-                      className="w-16 px-1.5 py-1 rounded border border-sky-200 text-xs tabular-nums text-right outline-none disabled:bg-sky-50 disabled:cursor-not-allowed"/>
-                  </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-sky-700">{fmt(aiVal)}</td>
-                  <td className={`px-2 py-1.5 text-right tabular-nums font-bold ${cfAdj < aiVal ? "text-rose-600" : "text-emerald-600"}`}>{fmt(cfAdj)}</td>
-                </React.Fragment>
-              );
-            });
-            return (
-              <tr key={row.component} className={`border-b border-sky-50 ${isEven ? "bg-white" : "bg-sky-50/40"}`}>
-                <td className="sticky left-0 z-[5] border-r border-sky-200 px-4 py-2.5 bg-white">
-                  <div className="font-bold text-sky-900">{row.component}</div>
-                  {row.label && <div className="text-xs text-slate-500">{row.label}</div>}
-                </td>
-                {cells}
-                <td className="px-3 py-2 text-right tabular-nums text-slate-500 border-l border-sky-200 bg-sky-50">{fmt(totalAi)}</td>
-                <td className={`px-3 py-2 text-right tabular-nums font-bold ${totalAdj < totalAi ? "text-rose-600" : "text-emerald-600"}`}>{fmt(totalAdj)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
     </div>
   );
 }
 
 // ─── Cashflow Quarter Summary Table ──────────────────────────────────────────
-function CashflowQuarterSummaryTable({ rows, quarterGroups, fmt, filterText, setFilterText, canEdit }) {
-  const filtered = rows.filter((r) =>
-    r.component.toLowerCase().includes(filterText.toLowerCase()) ||
-    (r.category || "").toLowerCase().includes(filterText.toLowerCase())
-  );
+function CashflowQuarterSummaryTable({ rows, quarterGroups, fmt, filterText, setFilterText, canEdit, stage, overallComments = {}, onOverallChange, openingCash = 0 }) {
+  const [showEmpty, setShowEmpty] = useState(false);
+  const monthCount = quarterGroups.reduce((n, qg) => Math.max(n, ...qg.monthIdxs.map((mi) => mi + 1)), 0);
+  const q = filterText.toLowerCase();
+  const matches = (r) =>
+    (r.label || r.component).toLowerCase().includes(q) ||
+    r.component.toLowerCase().includes(q) ||
+    (r.category || "").toLowerCase().includes(q);
+  const visible = (r) => matches(r) && (showEmpty || q || !isEmptyCfLine(r, monthCount));
+  const shownCount = rows.filter(visible).length;
+  const agg = cfAggregates(rows, monthCount, openingCash);
+  const lastPaymentSection = [...agg.sections].reverse().find((s) => s.sign < 0)?.key;
 
-  const grandTotals = quarterGroups.map((qg) => ({
-    key: qg.key,
-    ai:  filtered.reduce((s, r) => s + qg.monthIdxs.reduce((a, mi) => a + toCalcNumber(r[`month${mi+1}_ai`]), 0), 0),
-    adj: filtered.reduce((s, r) => s + qg.monthIdxs.reduce((a, mi) => a + toCalcNumber(r[`month${mi+1}_adjusted`]), 0), 0),
-  }));
-  const totalPeriodAi  = grandTotals.reduce((s, q) => s + q.ai, 0);
-  const totalPeriodAdj = grandTotals.reduce((s, q) => s + q.adj, 0);
+  // Monthly arrays -> one value per quarter group.
+  const byQuarter = (list) => quarterGroups.map((qg) => qg.monthIdxs.reduce((s, mi) => s + (list[mi] || 0), 0));
+  // Cash position at the end of each quarter group.
+  const closeByQuarter = (positions) => quarterGroups.map((qg) => {
+    const last = Math.max(...qg.monthIdxs);
+    return positions[last] ? positions[last].close : openingCash;
+  });
+
+  const totalRow = (key, label, t, tone, period = null, last = null) => {
+    const st = CF_TOTAL_STYLES[tone];
+    const dark = tone === "net";
+    const ai = t.qAiList ?? byQuarter(t.ai);
+    const adj = t.qAdjList ?? byQuarter(t.adj);
+    return (
+      <tr key={key} className={`border-b ${dark ? "border-sky-700" : "border-slate-200"} font-semibold ${st.row}`}>
+        <td className={`px-3 py-1.5 text-xs uppercase sticky left-0 border-r ${dark ? "border-sky-700" : "border-slate-200"} z-[9] ${st.cell}`}>{label}</td>
+        <td className="px-3 py-1.5 text-right tabular-nums text-xs">{t.prev != null ? fmt(t.prev) : ""}</td>
+        {quarterGroups.map((qg, qi) => (
+          <React.Fragment key={qg.key}>
+            <td className={`px-2 py-1.5 text-right tabular-nums text-xs border-l ${dark ? "border-sky-700 bg-sky-800" : "border-slate-200"}`}>{fmt(ai[qi])}</td>
+            <td className={`px-2 py-1.5 text-right tabular-nums text-xs font-bold ${dark ? "bg-sky-800" : ""}`}>{fmt(adj[qi])}</td>
+          </React.Fragment>
+        ))}
+        <td className={`px-2 py-1.5 text-right tabular-nums text-xs border-l ${dark ? "border-sky-700" : "border-slate-200"}`}>{fmt(period ? period.ai : sumOf(ai))}</td>
+        <td className="px-2 py-1.5 text-right tabular-nums text-xs font-bold">{fmt(period ? period.adj : sumOf(adj))}</td>
+        <td className={`px-2 py-1.5 border-l ${dark ? "border-sky-700" : "border-slate-200"}`}>{last}</td>
+      </tr>
+    );
+  };
+
+  const lineRow = (row, idx) => {
+    const rowBg = idx % 2 === 0 ? "bg-white" : "bg-slate-50/60";
+    const name = row.label || row.component;
+    const qCells = quarterGroups.map((qg) => ({
+      key: qg.key,
+      ai:  qg.monthIdxs.reduce((s, mi) => s + toCalcNumber(row[`month${mi+1}_ai`]), 0),
+      adj: qg.monthIdxs.reduce((s, mi) => s + toCalcNumber(row[`month${mi+1}_adjusted`]), 0),
+    }));
+    const periodAi  = qCells.reduce((s, c) => s + c.ai,  0);
+    const periodAdj = qCells.reduce((s, c) => s + c.adj, 0);
+    return (
+      <tr key={row.component} className={`rf-row border-b border-slate-100 transition-colors hover:bg-sky-50/50 ${rowBg}`}>
+        <CfLineName name={name} changed={periodAdj !== periodAi} rowBg={rowBg}/>
+        <td className="px-3 py-1 text-right tabular-nums text-xs text-slate-500">{fmt(row.previous_month)}</td>
+        {qCells.map((qc, qi) => (
+          <React.Fragment key={qc.key}>
+            <td className={`px-2 py-1 text-right text-xs text-slate-500 tabular-nums border-l border-slate-100 ${CF_MONTH_THEME[qi % CF_MONTH_THEME.length].bg}`}>{fmt(qc.ai)}</td>
+            <td className={`px-2 py-1 text-right text-xs font-bold tabular-nums ${CF_MONTH_THEME[qi % CF_MONTH_THEME.length].bg} ${cfTone(qc.adj, qc.ai, row.sign)}`}>{fmt(qc.adj)}</td>
+          </React.Fragment>
+        ))}
+        <td className="px-2 py-1 text-right text-xs text-slate-500 tabular-nums border-l border-slate-200 bg-slate-50/60">{fmt(periodAi)}</td>
+        <td className={`px-2 py-1 text-right text-xs font-bold tabular-nums ${cfTone(periodAdj, periodAi, row.sign)}`}>{fmt(periodAdj)}</td>
+        <td className="px-1 py-1 text-center border-l border-slate-100">
+          <InlineCommentIcon
+            commentKey={`overall-${row.component}`}
+            value={overallComments[row.component] || ""}
+            disabled={!canEdit}
+            onChange={(v) => onOverallChange?.(row.component, v)}
+            label={`${name} — Overall Note`}
+            isOverall
+          />
+        </td>
+      </tr>
+    );
+  };
+
+  const body = [];
+  agg.sections.forEach((sec) => {
+    const titles = CF_SECTION_TITLES[sec.key] || { heading: sec.label, total: `Total ${sec.label}` };
+    const shown = sec.rows.filter(visible);
+    body.push(
+      <tr key={`h-${sec.key}`} className="border-b border-slate-200 bg-slate-100">
+        <td colSpan={99} className="sticky left-0 px-3 py-1 text-xs font-bold uppercase tracking-wide text-sky-800">
+          {titles.heading}
+          {shown.length < sec.rows.length && (
+            <span className="ml-2 font-medium normal-case tracking-normal text-slate-500">
+              {shown.length} of {sec.rows.length} lines shown
+            </span>
+          )}
+        </td>
+      </tr>,
+    );
+    shown.forEach((r, i) => body.push(lineRow(r, i)));
+    body.push(totalRow(`t-${sec.key}`, titles.total, sec.total, "section"));
+    if (sec.key === lastPaymentSection) body.push(totalRow("t-payments", "Total Cash Payments", agg.payments, "payments"));
+  });
+
+  const closeAi = closeByQuarter(agg.positionAi);
+  const closeAdj = closeByQuarter(agg.positionAdj);
+  const netAi = sumOf(agg.net.ai), netAdj = sumOf(agg.net.adj);
+  const variance = netAdj - netAi;
+  const varPct = netAi ? ((variance / Math.abs(netAi)) * 100).toFixed(getDecimalPrecision()) : "0.0";
 
   return (
     <div>
-      <div className="mb-1.5 flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <FiSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={13}/>
-          <input value={filterText} onChange={(e) => setFilterText(e.target.value)}
-            placeholder="Search component or category…"
-            className="w-[220px] rounded-lg border border-slate-300 bg-white py-1 pl-8 pr-2.5 text-x outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"/>
-        </div>
-        {filterText && (
-          <button onClick={() => setFilterText("")} className="flex cursor-pointer items-center gap-1 bg-transparent text-slate-500">
-            <FiX size={12}/> Clear
-          </button>
-        )}
-        <span className="rounded-full bg-sky-100 px-2.5 py-[3px] text-xs font-bold text-sky-700">
-          {filtered.length}/{rows.length}
-        </span>
-        {!canEdit && (
-          <span className="flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 font-semibold text-amber-700">
-            <FiAlertCircle size={12}/> Read-only
-          </span>
-        )}
-      </div>
+      <CfToolbar filterText={filterText} setFilterText={setFilterText} shown={shownCount} total={rows.length}
+        showEmpty={showEmpty} setShowEmpty={setShowEmpty} canEdit={canEdit} stage={stage}/>
 
-      <div className="analytics-table-scroll max-h-[72vh] overflow-auto rounded-[14px] border border-sky-100 bg-white shadow-sm">
-        <table className="w-full min-w-[700px] border-collapse">
-          <thead className="sticky top-0 z-20">
-            <tr className="border-b border-sky-700 bg-sky-800">
-              <th rowSpan={2} className="sticky left-0 z-30 min-w-[200px] border-r border-sky-700 bg-sky-800 px-3.5 py-[9px] text-left text-xs font-extrabold uppercase tracking-[0.5px] text-sky-200">
-                Category
-              </th>
-              <th rowSpan={2} className="min-w-[100px] px-3 py-[9px] text-right tabular-nums text-xs font-bold uppercase text-sky-200">
-                Prev Month
-              </th>
-              {quarterGroups.map((qg) => (
-                <th key={qg.key} colSpan={2} className="border-l border-sky-700 px-3 py-[9px] text-center font-bold text-white">
-                  {qg.label}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible">
+        <div className="analytics-table-scroll relative overflow-x-auto max-h-[72vh] overflow-y-auto">
+          <table className="relative w-full min-w-[900px] border-collapse text-sm">
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-sky-800 border-b border-sky-700">
+                <th rowSpan={2} className="px-3 py-1.5 text-left text-xs font-semibold text-white uppercase tracking-wide border-r border-sky-700 sticky left-0 bg-sky-800 z-30 min-w-[230px]">Cash Flow Line</th>
+                <th rowSpan={2} className="px-3 py-1.5 text-right text-xs font-semibold text-white uppercase tracking-wide min-w-[100px]">Prev Month</th>
+                {quarterGroups.map((qg) => (
+                  <th key={qg.key} colSpan={2} className="px-3 py-1.5 text-center text-xs font-semibold border-l text-white border-sky-700 bg-sky-800">{qg.label}</th>
+                ))}
+                <th colSpan={2} className="px-3 py-1.5 text-center text-xs font-semibold text-slate-50 border-l border-sky-700 bg-sky-900">Period Total</th>
+                <th rowSpan={2} className="px-1 py-1.5 text-center border-l border-sky-700 text-white min-w-[42px]">
+                  <FiMessageSquare size={11} className="mx-auto opacity-70"/>
                 </th>
+              </tr>
+              <tr className="bg-sky-700 border-b border-slate-600 sticky top-[28px] z-10">
+                {quarterGroups.map((qg) => (
+                  <React.Fragment key={qg.key}>
+                    <th className="px-2 py-1 text-right text-xs font-medium text-slate-100 uppercase border-l border-slate-600 min-w-[90px]">AI</th>
+                    <th className="px-2 py-1 text-right text-xs font-semibold text-white uppercase min-w-[90px]">Adjusted</th>
+                  </React.Fragment>
+                ))}
+                <th className="px-2 py-1 text-right text-xs font-medium text-white uppercase border-l border-slate-600 min-w-[90px]">AI</th>
+                <th className="px-2 py-1 text-right text-xs font-semibold text-white uppercase min-w-[90px]">Adj</th>
+              </tr>
+            </thead>
+            <tbody className="text-sm">
+              {totalRow("cash-open", "Cash on Hand (Beginning of Period)", {
+                prev: null,
+                qAiList: quarterGroups.map((qg) => agg.positionAi[Math.min(...qg.monthIdxs)]?.open ?? openingCash),
+                qAdjList: quarterGroups.map((qg) => agg.positionAdj[Math.min(...qg.monthIdxs)]?.open ?? openingCash),
+              }, "section", { ai: openingCash, adj: openingCash })}
+              {shownCount === 0 && (
+                <tr><td colSpan={99}><EmptyState label="No lines match your search."/></td></tr>
+              )}
+              {body}
+            </tbody>
+            <tfoot className="sticky bottom-0 z-10">
+              {totalRow("net", "Net Cash Change", agg.net, "net", null, (
+                <span className={`text-xs font-bold tabular-nums ${variance >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {variance >= 0 ? "+" : ""}{fmt(variance)} ({varPct}%)
+                </span>
               ))}
-              <th colSpan={2} className="border-l border-sky-700 bg-sky-900 px-3 py-[9px] text-center text-xs font-bold text-sky-200">
-                Period Total
-              </th>
-            </tr>
-            <tr className="sticky top-[34px] z-[19] border-b border-sky-600 bg-sky-700">
-              {quarterGroups.map((qg) => (
-                <React.Fragment key={qg.key}>
-                  <th className="min-w-[90px] border-l border-sky-600 px-2.5 py-[5px] text-right font-bold uppercase text-sky-200">AI</th>
-                  <th className="min-w-[90px] px-2.5 py-[5px] text-right font-extrabold uppercase text-white">Adjusted</th>
-                </React.Fragment>
-              ))}
-              <th className="min-w-[90px] border-l border-sky-600 px-2.5 py-[5px] text-right font-bold uppercase text-sky-200">AI</th>
-              <th className="min-w-[90px] px-2.5 py-[5px] text-right font-extrabold uppercase text-white">Adj</th>
-            </tr>
-          </thead>
-          <tbody className="text-sm">
-            {filtered.length === 0
-              ? <tr><td colSpan={99} className="text-center py-8 text-slate-400">No components match.</td></tr>
-              : filtered.map((row, idx) => {
-                  const bg = idx % 2 === 0 ? "bg-white" : "bg-sky-50";
-                  const qCells = quarterGroups.map((qg) => ({
-                    key: qg.key,
-                    ai:  qg.monthIdxs.reduce((s, mi) => s + toCalcNumber(row[`month${mi+1}_ai`]), 0),
-                    adj: qg.monthIdxs.reduce((s, mi) => s + toCalcNumber(row[`month${mi+1}_adjusted`]), 0),
-                  }));
-                  const periodAi  = qCells.reduce((s, q) => s + q.ai,  0);
-                  const periodAdj = qCells.reduce((s, q) => s + q.adj, 0);
-                  const changed   = periodAdj !== periodAi;
-                  return (
-                    <tr key={row.component} className={`border-b border-sky-50 ${bg}`}>
-                      <td className={`px-3.5 py-2 sticky left-0 border-r border-sky-100 z-[5] ${bg}`}>
-                        <div className="flex items-center gap-2">
-                          <div>
-                            <div className="font-bold text-sky-900">{row.component}</div>
-                            {row.label && row.label !== row.component && (
-                              <div className="text-slate-500 text-xs">{row.label}</div>
-                            )}
-                          </div>
-                          {changed && <span className="w-1.5 h-1.5 rounded-full bg-sky-600 flex-shrink-0"/>}
-                        </div>
-                      </td>
-                      <td className={`px-3 py-2 text-right tabular-nums text-slate-600 ${bg}`}>{fmt(row.previous_month)}</td>
-                      {qCells.map((qc, qi) => (
-                        <React.Fragment key={qc.key}>
-                          <td className={`px-2.5 py-2 text-right tabular-nums text-slate-500 border-l border-sky-50 ${bg}`}>{fmt(qc.ai)}</td>
-                          <td className={`px-2.5 py-2 text-right tabular-nums font-bold ${bg} ${qc.adj>qc.ai?"text-emerald-600":qc.adj<qc.ai?"text-rose-600":"text-sky-900"}`}>{fmt(qc.adj)}</td>
-                        </React.Fragment>
-                      ))}
-                      <td className="px-2.5 py-2 text-right tabular-nums text-sky-600 font-bold border-l border-sky-100 bg-sky-50">{fmt(periodAi)}</td>
-                      <td className={`px-2.5 py-2 text-right tabular-nums font-bold bg-sky-50 ${periodAdj>periodAi?"text-emerald-600":periodAdj<periodAi?"text-rose-600":"text-sky-900"}`}>{fmt(periodAdj)}</td>
-                    </tr>
-                  );
-                })}
-          </tbody>
-          <tfoot>
-            <tr className="bg-sky-900 text-white sticky bottom-0 z-10">
-              <td className="px-3.5 py-2.5 font-bold sticky left-0 bg-sky-900 border-r border-sky-700 z-20">GRAND TOTAL</td>
-              <td className="bg-sky-900"/>
-              {grandTotals.map(({ key, ai, adj }) => (
-                <React.Fragment key={key}>
-                  <td className="px-2.5 py-2.5 text-right tabular-nums text-sky-200 border-l border-sky-700 bg-sky-800">{fmt(ai)}</td>
-                  <td className="px-2.5 py-2.5 text-right tabular-nums font-bold text-white bg-sky-800">{fmt(adj)}</td>
-                </React.Fragment>
-              ))}
-              <td className="px-2.5 py-2.5 text-right tabular-nums text-sky-200 border-l border-sky-700">{fmt(totalPeriodAi)}</td>
-              <td className="px-2.5 py-2.5 text-right tabular-nums font-bold text-white">{fmt(totalPeriodAdj)}</td>
-            </tr>
-          </tfoot>
-        </table>
+              {totalRow("cash-close", "Ending Cash Position", { prev: openingCash, qAiList: closeAi, qAdjList: closeAdj }, "net", {
+                ai: closeAi.length ? closeAi[closeAi.length - 1] : openingCash,
+                adj: closeAdj.length ? closeAdj[closeAdj.length - 1] : openingCash,
+              })}
+            </tfoot>
+          </table>
+        </div>
       </div>
     </div>
   );
 }
 
 // ─── Scenarios Tab ────────────────────────────────────────────────────────────
-function ScenariosTab({ year, quarter, token, apiData, scenariosList, scenariosLoading, onNewScenario, onEdit, onDelete, openMenuId, setOpenMenuId, fmt }) {
-  const STYLES = {
-    baseline:   { icon: "◎", top: "from-sky-700 to-sky-600" },
-    best_case:  { icon: "🚀", top: "from-emerald-700 to-emerald-600" },
-    worst_case: { icon: "⚠️", top: "from-amber-700 to-amber-600" },
-  };
-  const getStyle = (sc) => STYLES[sc.scenario_name] || { icon: "💧", top: "from-cyan-700 to-cyan-600" };
+// Same cards / comparison table as the Revenue Forecast; totals are the net
+// cash change (receipts − payments).
+const CF_SCENARIO_STYLES = {
+  baseline:   { icon: "◎",  top: "bg-blue-600" },
+  best_case:  { icon: "🚀", top: "bg-emerald-600" },
+  worst_case: { icon: "⚠️", top: "bg-amber-500" },
+};
 
-  if (scenariosLoading) return <div className="text-center py-10 text-slate-500 text-xs">Loading scenarios…</div>;
+function ScenariosTab({ year, quarter, apiData, scenariosList, scenariosLoading, onNewScenario, onEdit, onDelete, openMenuId, setOpenMenuId, fmt }) {
+  const getStyle = (sc) => CF_SCENARIO_STYLES[sc.scenario_name] || { icon: "💧", top: "bg-cyan-600" };
+  const compare = apiData?.compare_cashflow_scenarios || {};
+  const baseAi = toCalcNumber(compare.baseline?.total_ai);
+  const totalsFor = (sc) => {
+    const multiplier = toCalcNumber(sc.multiplier) || 1;
+    const comp = compare[sc.scenario_name];
+    const compAi = toCalcNumber(comp?.total_ai);
+    return {
+      ai: compAi || baseAi * multiplier,
+      user: toCalcNumber(comp?.total_user) || baseAi * multiplier,
+      baseForVariance: compAi || baseAi,
+    };
+  };
 
   return (
     <div>
-      <div className="flex justify-between mb-4 items-start gap-4">
+      <div className="flex items-center justify-between mb-2">
         <div>
-          <div className="font-bold text-sky-900 text-base">📈 Cashflow Scenarios</div>
-          <div className="text-xs text-slate-600 mt-1">Baseline, Best Case, Worst Case & Custom</div>
+          <h2 className="font-bold text-slate-900 text-s">Forecast Scenarios</h2>
+          <p className="text-x text-slate-500 mt-0.5">Manage and compare forecast scenarios · totals are net cash change (receipts − payments)</p>
         </div>
-        <button onClick={onNewScenario} className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg text-xs font-bold cursor-pointer transition-colors">
+        <button onClick={onNewScenario}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-x font-semibold transition-all shadow-sm">
           <FiPlus size={13}/> New Scenario
         </button>
       </div>
 
-      {scenariosList.length === 0
-        ? <div className="text-center py-10 text-slate-400 text-xs">No scenarios. Create your first scenario.</div>
+      {scenariosLoading ? <Spinner label="Loading scenarios…"/> : scenariosList.length === 0
+        ? <EmptyState label="No scenarios found. Create your first scenario."/>
         : (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               {scenariosList.map((sc) => {
-                const st = getStyle(sc);
-                const base = toCalcNumber(apiData?.compare_cashflow_scenarios?.baseline?.total_ai);
-                const comp = apiData?.compare_cashflow_scenarios?.[sc.scenario_name];
-                const compAi   = toCalcNumber(comp?.total_ai);
-                const compUser = toCalcNumber(comp?.total_user);
-                const multiplier = toCalcNumber(sc.multiplier) || 1;
-                const totalAi   = compAi   || base * multiplier;
-                const totalUser = compUser || base * multiplier;
-                const vAmt = totalUser - (compAi || base);
+                const style = getStyle(sc);
+                const { ai, user, baseForVariance } = totalsFor(sc);
+                const vAmt = user - baseForVariance;
+                const vPct = baseForVariance ? ((vAmt / Math.abs(baseForVariance)) * 100).toFixed(getDecimalPrecision()) : "0.0";
                 const id = sc.id || sc.scenario_name;
                 return (
-                  <div key={id} className="rounded-xl border border-sky-100 bg-white overflow-hidden shadow-sm hover:shadow-md transition-all">
-                    <div className={`h-1 bg-gradient-to-r ${st.top}`}/>
-                    <div className="p-3.5">
-                      <div className="flex justify-between mb-2.5 items-start gap-2">
-                        <div className="flex gap-2 items-center">
-                          <span className="text-lg">{st.icon}</span>
+                  <div key={id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all overflow-visible">
+                    <div className={`h-1 ${style.top}`}/>
+                    <div className="p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-xl leading-none">{style.icon}</span>
                           <div>
-                            <div className="font-bold text-sky-900 text-sm capitalize">
-                              {sc.scenario_name?.replace(/_/g, " ")}
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-semibold text-slate-900 text-s capitalize">{sc.scenario_name?.replace(/_/g, " ")}</p>
+                              {sc.is_system && <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-xs font-semibold border border-slate-200">System</span>}
                             </div>
-                            <div className="text-xs text-slate-500 tabular-nums">{year} · {quarter} · {sc.multiplier}×</div>
+                            <p className="text-xs text-slate-400 tabular-nums">{year} · {quarter} · {sc.multiplier}×</p>
                           </div>
-                          {sc.is_system && (
-                            <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200">System</span>
-                          )}
                         </div>
                         <div className="relative">
                           <button onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === id ? null : id); }}
-                            className="w-7 h-7 rounded-lg flex items-center justify-center bg-white border border-sky-100 hover:border-sky-200 cursor-pointer text-slate-600 transition-colors">
+                            className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-sky-700 transition-colors">
                             <FiMoreVertical size={14}/>
                           </button>
                           {openMenuId === id && (
-                            <div className="absolute right-0 top-8 z-20 bg-white rounded-lg border border-sky-100 shadow-lg w-[120px]" onClick={(e) => e.stopPropagation()}>
+                            <div className="absolute right-0 top-8 z-20 bg-white rounded-xl border border-slate-200 shadow-xl overflow-visible w-32" onClick={(e) => e.stopPropagation()}>
                               <button onClick={() => { onEdit(sc); setOpenMenuId(null); }} disabled={sc.is_system && !sc.id}
-                                className="flex items-center gap-1.5 w-full px-3 py-2 text-xs text-sky-600 hover:bg-sky-50 font-semibold transition-colors">
+                                className="flex items-center gap-2 w-full px-3 py-2.5 text-x text-sky-700 hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                                 <FiEdit2 size={12}/> Edit
                               </button>
                               <button onClick={() => { onDelete(sc); setOpenMenuId(null); }} disabled={sc.is_system}
-                                className="flex items-center gap-1.5 w-full px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 font-semibold border-t border-sky-100 transition-colors">
+                                className="flex items-center gap-2 w-full px-3 py-2.5 text-x text-red-600 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed border-t border-slate-100">
                                 <FiTrash2 size={12}/> Delete
                               </button>
                             </div>
                           )}
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 mb-2.5">
-                        {[["AI Total", totalAi], ["Adjusted", totalUser]].map(([lbl, val]) => (
-                          <div key={lbl} className="bg-sky-50 rounded-lg p-2.5 border border-sky-100">
-                            <div className="text-xs text-slate-600 mb-1">{lbl}</div>
-                            <div className="text-sm font-bold text-sky-900 tabular-nums">{fmt(val)}</div>
-                          </div>
-                        ))}
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-200">
+                          <p className="text-xs text-slate-500 font-medium mb-0.5">AI Total</p>
+                          <p className="text-s font-bold text-sky-700 tabular-nums">{fmt(ai)}</p>
+                        </div>
+                        <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-200">
+                          <p className="text-xs text-slate-500 font-medium mb-0.5">Adjusted</p>
+                          <p className="text-s font-bold text-slate-900 tabular-nums">{fmt(user)}</p>
+                        </div>
                       </div>
-                      <div className="flex justify-between bg-sky-50 rounded-lg p-2 border border-sky-100 mb-2">
-                        <span className="text-xs text-slate-600 font-semibold">Variance</span>
-                        <span className={`text-xs font-bold tabular-nums ${vAmt >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
-                          {vAmt >= 0 ? "+" : ""}{fmt(vAmt)}
+                      <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 border border-slate-200">
+                        <span className="text-xs text-slate-500 font-medium">Variance</span>
+                        <span className={`text-x font-bold tabular-nums ${vAmt >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                          {vAmt >= 0 ? "+" : ""}{fmt(vAmt)} ({vPct}%)
                         </span>
                       </div>
-                      {sc.description && <div className="text-xs text-slate-600 leading-relaxed">{sc.description}</div>}
+                      {sc.description && <p className="text-x text-slate-500 mt-2.5 leading-relaxed line-clamp-2">{sc.description}</p>}
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* Comparison table */}
-            <div className="rounded-xl border border-sky-100 bg-white overflow-hidden shadow-sm">
-              <div className="px-4 py-2.5 border-b border-sky-100 bg-sky-50 flex items-center gap-2">
-                <FiBarChart2 color="#64748b" size={14}/>
-                <span className="font-bold text-sky-900 text-sm">Scenario Comparison — {year} {quarter}</span>
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible">
+              <div className="px-4 py-3 border-b border-slate-200 bg-slate-50 flex items-center gap-2">
+                <FiBarChart2 className="text-slate-500" size={14}/>
+                <span className="font-semibold text-sky-800 text-s">Scenario Comparison — {year} {quarter}</span>
+                <span className="ml-auto text-xs text-slate-400 tabular-nums">{scenariosList.length} scenarios</span>
               </div>
               <div className="analytics-table-scroll overflow-x-auto">
-                <table className="w-full border-collapse text-xs">
+                <table className="w-full border-collapse text-sm">
                   <thead>
-                    <tr className="border-b border-sky-100 bg-sky-50">
-                      <th className="px-3.5 py-2 text-left font-bold text-xs uppercase text-slate-600">Metric</th>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">Metric</th>
                       {scenariosList.map((sc) => (
-                        <th key={sc.id || sc.scenario_name} className="px-3.5 py-2 text-right font-bold text-xs capitalize text-slate-600">
+                        <th key={sc.id || sc.scenario_name} className="px-4 py-3 text-right text-xs font-semibold text-sky-700 capitalize tracking-wide">
                           {sc.scenario_name?.replace(/_/g, " ")}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="text-sm">
-                    {["Multiplier", "AI Total", "User Forecast"].map((label, ri) => (
-                      <tr key={label} className="border-b border-sky-50 bg-white">
-                        <td className="px-3.5 py-2 font-semibold text-sky-700">{label}</td>
-                        {scenariosList.map((sc) => {
-                          const base = toCalcNumber(apiData?.compare_cashflow_scenarios?.baseline?.total_ai);
-                          const comp = apiData?.compare_cashflow_scenarios?.[sc.scenario_name];
-                          const multiplier = toCalcNumber(sc.multiplier) || 1;
-                          const val = label === "Multiplier" ? `${sc.multiplier}×`
-                            : label === "AI Total"      ? fmt(toCalcNumber(comp?.total_ai)   || base * multiplier)
-                            : fmt(toCalcNumber(comp?.total_user) || base * multiplier);
-                          return (
-                            <td key={sc.id || sc.scenario_name} className="px-3.5 py-2 text-right tabular-nums font-semibold text-sky-900">
-                              {val}
-                            </td>
-                          );
-                        })}
+                    {[
+                      { label: "Multiplier",    fn: (sc) => `${sc.multiplier}×` },
+                      { label: "AI Total",      fn: (sc) => fmt(totalsFor(sc).ai) },
+                      { label: "User Forecast", fn: (sc) => fmt(totalsFor(sc).user), bold: true },
+                    ].map((row, ri) => (
+                      <tr key={row.label} className={`border-b border-slate-100 ${ri % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}>
+                        <td className="px-4 py-3 font-medium text-sky-700 text-s">{row.label}</td>
+                        {scenariosList.map((sc) => (
+                          <td key={sc.id || sc.scenario_name} className={`px-4 py-3 text-right tabular-nums text-s ${row.bold ? "font-bold text-slate-900" : "text-slate-600"}`}>
+                            {row.fn(sc)}
+                          </td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
-          </>
+          </div>
         )}
     </div>
   );
@@ -1015,7 +1261,7 @@ export default function CashflowForecasting() {
   // ── State ──────────────────────────────────────────────────────────────────
   const [quarter,           setQuarter]           = useCurrentQuarter(fiscalYearStartMonth);
   const [currencyFilter,    setCurrencyFilter]    = useState("actualvalue");
-  const [activeTab,         setActiveTab]         = useState("cashflow");
+  const [activeTab,         setActiveTab]         = useState("summary");
 
   /* Forecast creation mode — which view is the "source of truth" input
      surface. Cashflow Components and Drivers data are kept numerically in
@@ -1102,6 +1348,32 @@ export default function CashflowForecasting() {
     return Array.from(groups.values());
   }, [monthPeriods, fiscalYearStartMonth]);
 
+  // Cash on hand going into the first forecast month (backend opening_cash).
+  const openingCash = toCalcNumber(apiData?.opening_cash ?? apiData?.cashflow_summary?.opening_cash);
+
+  // KPI cards follow the Adjusted values as they are edited, not only on load.
+  const liveSummary = useMemo(() => {
+    if (!rows.length) return {};
+    const agg = cfAggregates(rows, months.length, openingCash);
+    const receipts = sumOf(agg.receipts.adj);
+    const payments = sumOf(agg.payments.adj);
+    return {
+      opening_cash: openingCash,
+      total_receipts: receipts,
+      total_payments: payments,
+      net_cashflow_adjusted: receipts - payments,
+      closing_balance: openingCash + receipts - payments,
+    };
+  }, [rows, months.length, openingCash]);
+
+  // Drivers: the lines with data or a driver adjustment; the empty template
+  // lines have nothing to drive.
+  const driverRows = useMemo(
+    () => rows.filter((r) =>
+      !isEmptyCfLine(r, months.length) || Object.keys(driverAdj).some((k) => k.startsWith(`${r.component}|`))),
+    [rows, months.length, driverAdj],
+  );
+
   // ── Scroll to top on mount ─────────────────────────────────────────────────
   useEffect(() => { window.scrollTo({ top: 0, behavior: "instant" }); }, []);
 
@@ -1167,6 +1439,8 @@ export default function CashflowForecasting() {
           component:              r.component,
           label:                  r.label || r.component,
           category:               r.category || "",
+          section:                r.section || "",
+          sign:                   Number(r.sign) < 0 ? -1 : 1,
           previous_month:         toBackendNumber(r.previous_month),
           quarter_total_ai:       toBackendNumber(r.quarter_total_ai),
           quarter_total_adjusted: toBackendNumber(r.quarter_total_adjusted),
@@ -1279,7 +1553,7 @@ export default function CashflowForecasting() {
         // Save driver adjustments if any have been set. "" counts as
         // not-set (cleared back to the AI default), same as null.
         const driverEntries = Object.entries(driverAdj).filter(([, v]) =>
-          (v.unitsAdj != null && v.unitsAdj !== "") || (v.rateAdj != null && v.rateAdj !== "")
+          (v.unitsAdj != null && v.unitsAdj !== "") || (v.rateAdj != null && v.rateAdj !== "") || v.monthComment
         );
         if (driverEntries.length === 0) return;
         const driverPayload = driverEntries.map(([key, adj]) => {
@@ -1439,10 +1713,11 @@ export default function CashflowForecasting() {
       const data = await res.json();
 
       const skipped = data?.skipped_quarters || [];
+      const lineName = rows.find((r) => r.component === component)?.label || component;
       addToast(
         skipped.length
-          ? `Applied to all 12 months for ${component} — ${skipped.join(", ")} skipped (not in draft) ✓`
-          : `Applied to all 12 months for ${component} ✓`,
+          ? `Applied to all 12 months for ${lineName} — ${skipped.join(", ")} skipped (not in draft) ✓`
+          : `Applied to all 12 months for ${lineName} ✓`,
         "success"
       );
     } catch (e) {
@@ -1491,6 +1766,14 @@ export default function CashflowForecasting() {
     }
   };
 
+  // A driver month comment: stored on its own, so it never re-derives the
+  // month's Adjusted value the way a units / rate edit does.
+  const handleDriverCommentChange = (comp, monthKey, val) => {
+    const key = `${comp}|${monthKey}`;
+    setDriverAdj((prev) => ({ ...prev, [key]: { ...(prev[key] || {}), monthComment: val } }));
+    setHasChanges(true);
+  };
+
   // ── Derived totals (dynamic month count) ──────────────────────────────────
   // toCalcNumber, not `|| 0`: an adjusted cell can hold the raw string the
   // user is mid-typing, and `0 + "<string>"` concatenates instead of adding.
@@ -1510,51 +1793,8 @@ export default function CashflowForecasting() {
   const handleViewTypeChange          = (v)  => guardedAction(() => setViewType(v));
   const handleForecastModeChange      = (v)  => guardedAction(() => {
     setForecastMode(v);
-    setActiveTab(v === "drivers" ? "drivers" : "cashflow");
+    setActiveTab(v === "drivers" ? "drivers" : "summary");
   });
-
-  // ── Stage pill colour ──────────────────────────────────────────────────────
-  const STAGE_PILL = {
-    draft:     { bg: "#64748b" },
-    submitted: { bg: "#f59e0b" },
-    reviewed:  { bg: "#8b5cf6" },
-    approved:  { bg: "#10b981" },
-    locked:    { bg: "#dc2626" },
-  };
-  const pillStyle = STAGE_PILL[stage] || STAGE_PILL.draft;
-
-  // ── Download/upload ────────────────────────────────────────────────────────
-  const [downloading, setDownloading] = useState(false);
-  const [uploadOpen,  setUploadOpen]  = useState(false);
-  const [uploading,   setUploading]   = useState(false);
-  const [uploadError, setUploadError] = useState(null);
-
-  const downloadTemplate = async () => {
-    setDownloading(true);
-    try {
-      const res = await fetch(`${API_BASE}/${year}/excel-template/cashflow-adjustments?quarter=${quarter}`,
-        { headers: { Authorization: `Bearer ${token}`, accept: "application/json" } });
-      if (!res.ok) throw new Error(await parseApiError(res));
-      const blob = await res.blob();
-      const url  = window.URL.createObjectURL(blob);
-      const a    = document.createElement("a"); a.href = url; a.download = `cashflow-${year}-${quarter}.xlsx`; a.click();
-      window.URL.revokeObjectURL(url);
-      addToast("Template downloaded ✓", "success");
-    } catch (e) { addToast(`Download failed: ${e.message}`, "error"); }
-    finally { setDownloading(false); }
-  };
-
-  const handleExcelUpload = async (file) => {
-    setUploading(true); setUploadError(null);
-    try {
-      const form = new FormData(); form.append("file", file);
-      const res = await fetch(`${API_BASE}/${year}/excel-upload/cashflow-adjustments?quarter=${quarter}`,
-        { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
-      if (!res.ok) throw new Error(await parseApiError(res));
-      addToast("Uploaded ✓", "success"); setUploadOpen(false); fetchData();
-    } catch (e) { setUploadError(e.message); addToast(`Upload failed: ${e.message}`, "error"); }
-    finally { setUploading(false); }
-  };
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -1584,67 +1824,39 @@ export default function CashflowForecasting() {
         onCancel={() => { setShowUnsavedModal(false); setPendingAction(null); }}
       />
       <ApplyAllMonthsModal
-        open={applyAllMonthsModal.open} componentLabel={applyAllMonthsModal.component}
+        open={applyAllMonthsModal.open}
+        componentLabel={rows.find((r) => r.component === applyAllMonthsModal.component)?.label || applyAllMonthsModal.component}
         value={applyAllMonthsModal.value} applying={applyingAllMonths} fmt={fmt}
         onYes={applyAdjustedToAllMonths} onNo={closeApplyAllMonthsModal}
       />
-      {uploadOpen && (
-        <ImportModal
-          open={uploadOpen} onClose={() => setUploadOpen(false)}
-          title="Upload Cashflow Adjustments"
-          description="Upload your filled Cashflow Adjustments template (.xlsx / .xls / .csv)."
-          uploading={uploading} error={uploadError} onUpload={handleExcelUpload}
-        />
-      )}
-
-      {/* ── HEADER ─────────────────────────────────────────────────────── */}
+      {/* ── HEADER ─────────────────────────────────────────────────── */}
       <header className="forecasting-page-header bg-gradient-to-r from-sky-950 via-sky-900 to-sky-700 rounded-xl px-4 py-2.5 md:px-6 sticky -top-5 z-40 shadow-sm">
         <div className="max-w-screen-2xl mx-auto flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-lg font-bold text-white">Cashflow Forecast</h1>
-            <p className="text-white/90 text-xs mt-0.5">Cash movement, drivers, scenarios and forecast discussion</p>
+          <div className="flex items-center gap-3">
+            <div>
+              <h1 className="text-lg font-bold text-white">Cashflow Forecast</h1>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <span className="tabular-nums text-x text-sky-200">{forecastYear} · {quarter} · {currency}</span>
-
-            <span className="flex items-center gap-1 rounded-full px-2.5 py-[3px] text-xs font-bold text-white" style={{ background: pillStyle.bg }}>
-              ● {STAGE_LABELS?.[stage] || stage}
-            </span>
-
-            {hasChanges && (
-              <span className="flex items-center gap-1 rounded-full border border-amber-400/40 bg-amber-500/20 px-2.5 py-[3px] text-xs font-bold text-amber-300">
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300" /> Unsaved
-              </span>
-            )}
-
+          <div className="flex items-center gap-2">
             <select value={currencyFilter} onChange={(e) => handleCurrencyChange(e.target.value)}
-              className="cursor-pointer rounded-md border border-sky-200 bg-white px-2.5 py-1 text-x font-bold text-sky-800 outline-none">
-              {CURRENCY_FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              className="px-3 py-1 rounded-lg bg-white border border-sky-200 text-sky-900 text-x font-semibold cursor-pointer outline-none focus:ring-2 focus:ring-sky-200">
+              {CURRENCY_FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value} className="bg-white text-sky-900">{o.label}</option>)}
             </select>
-
             <button onClick={handleRefresh}
-              className="flex cursor-pointer items-center gap-1 rounded-md border border-white/20 bg-white/10 px-3 py-1 text-x font-bold text-white">
+              title="Reload from cache"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 border border-white/20 text-white text-x font-semibold hover:bg-white/20 transition-colors">
               <FiRefreshCw size={12}/> Refresh
             </button>
             <button onClick={() => window.print()}
-              className="flex cursor-pointer items-center gap-1 rounded-md border border-white/20 bg-white/10 px-3 py-1 text-x font-bold text-white">
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 border border-white/20 text-white text-x font-semibold hover:bg-white/20 transition-colors">
               <FiDownload size={12}/> Export
             </button>
           </div>
         </div>
       </header>
 
-      {/* ── WORKFLOW PROGRESS ─────────────────────────────────────────── */}
-      <div className="mt-2">
-        <WorkflowProgress
-          stage={stage} workflowMeta={workflowMeta}
-          onAction={(t) => setModal({ open: true, target: t })}
-        />
-      </div>
-
-      <main className="max-w-screen-2xl mx-auto px-0 py-2">
-
-        {/* ── FILTER BAR (forecast_year / forecast_type / quarter / rolling_start / view_type) ── */}
+      {/* ── FILTER BAR (forecast_year / forecast_type / quarter / view_type) ── */}
+      <div className="max-w-screen-2xl mx-auto px-0 mt-2">
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-s">
           <div className="flex items-center gap-2">
             <label className="font-semibold text-slate-700">Year</label>
@@ -1655,7 +1867,7 @@ export default function CashflowForecasting() {
               FY{forecastYear}
             </span>
           </div>
-
+  
           <div className="flex items-center gap-2">
             <label className="font-semibold text-slate-700">Forecast Type</label>
             <select
@@ -1668,7 +1880,7 @@ export default function CashflowForecasting() {
               <option value="rolling">Rolling</option>
             </select>
           </div>
-
+  
           {forecastType === "quarter" && (
             <div className="flex items-center gap-2">
               <label className="font-semibold text-slate-700">Quarter</label>
@@ -1683,7 +1895,7 @@ export default function CashflowForecasting() {
               </select>
             </div>
           )}
-
+  
           {forecastType === "rolling" && (
             <div className="flex items-center gap-2">
               <label className="font-semibold text-slate-700">Rolling Start Month</label>
@@ -1695,7 +1907,7 @@ export default function CashflowForecasting() {
               </span>
             </div>
           )}
-
+  
           <div className="flex items-center gap-2">
             <label className="font-semibold text-slate-700">View Type</label>
             <select
@@ -1707,7 +1919,7 @@ export default function CashflowForecasting() {
               <option value="quarter_summary">Quarter Summary</option>
             </select>
           </div>
-
+  
           <div className="flex items-center gap-2">
             <label className="font-semibold text-slate-700">Forecast Creation Mode</label>
             <select
@@ -1721,83 +1933,73 @@ export default function CashflowForecasting() {
             </select>
           </div>
         </div>
+      </div>
 
-        {/* ── KPI ROW ──────────────────────────────────────────────────────── */}
-        <KpiRow summary={apiData?.cashflow_summary || apiData?.forecast_summary || {}} fmt={fmt}/>
+      {/* ── MAIN ───────────────────────────────────────────────────── */}
+      <main className="max-w-screen-2xl mx-auto px-0 py-2">
 
-        {/* ── TABS BAR ─────────────────────────────────────────────────────── */}
+        <KpiRow summary={liveSummary} months={months} fmt={fmt}/>
+        <WorkflowProgress stage={stage} workflowMeta={workflowMeta} onAction={(t) => setModal({ open: true, target: t })}/>
+
+        {/* ── TABS ────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between border-b-2 border-slate-200 mb-2 gap-2 flex-wrap">
-          <div className="flex gap-2">
+          <div className="flex items-end gap-0.5">
             {TABS.map((t) => (
               <button key={t.id} onClick={() => handleTabChange(t.id)}
-                className={`flex cursor-pointer items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-x font-semibold transition-all ${
-                  activeTab === t.id
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-s font-semibold whitespace-nowrap transition-all
+                  ${activeTab === t.id
                     ? "bg-white text-sky-600 rounded-t-xl -mb-0.5 border-l border-t border-r border-slate-200 border-b-2 border-b-white shadow-sm"
-                    : "text-slate-500 hover:text-sky-700 hover:bg-white/60 rounded-t-xl"
-                }`}>
+                    : "text-slate-500 hover:text-sky-700 hover:bg-white/60 rounded-t-xl"}`}>
                 {t.icon} {t.label}
-                {t.id === "cashflow" && (
-                  <span className="rounded-md bg-sky-100 px-1.5 py-px font-extrabold text-sky-900">
-                    {rows.length}
-                  </span>
-                )}
-                {t.id === "comments" && (
-                  <span className="rounded-md bg-sky-100 px-1.5 py-px font-extrabold text-sky-900">
-                    0
-                  </span>
-                )}
               </button>
             ))}
           </div>
-          {activeTab === "cashflow" && (
-            <div className="flex gap-1.5">
-              <button onClick={downloadTemplate} disabled={downloading}
-                className={`flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1 text-x font-semibold text-sky-700 ${downloading ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
-                <FiDownload size={12}/> Template
-              </button>
-              {canEdit && (
-                <button onClick={() => { setUploadError(null); setUploadOpen(true); }}
-                  className="flex cursor-pointer items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-700 px-3 py-1 text-x font-bold text-white">
-                  <FiUpload size={12}/> Upload Excel
-                </button>
-              )}
-            </div>
-          )}
+          <TabActionButtons activeTab={activeTab} year={year} quarter={quarter} token={token}
+            canEdit={canEdit} onSuccess={fetchData} addToast={addToast}/>
         </div>
 
-        {/* ── CONTENT ──────────────────────────────────────────────────────── */}
-
-        {/* Cashflow Components */}
-        {activeTab === "cashflow" && (
-          loading
-            ? <TableSkeleton columns={5} rows={8} />
-            : viewType === "quarter_summary"
-            ? <CashflowQuarterSummaryTable
-                rows={rows} quarterGroups={quarterGroups} fmt={fmt}
-                filterText={filterText} setFilterText={setFilterText} canEdit={canEdit}
-              />
-            : <CashflowTable
-                rows={rows} months={months} canEdit={canEdit}
-                cellComments={cellComments} overallComments={overallComments}
-                onAdjChange={handleAdjChange}
-                onAdjBlur={handleAdjBlur}
-                onCommentChange={handleCommentChange}
-                onOverallChange={handleOverallChange}
-                fmt={fmt} filterText={filterText} setFilterText={setFilterText}
-              />
+        {/* ══ SUMMARY TAB ════════════════════════════════════════════ */}
+        {activeTab === "summary" && (
+          <div>
+            {loading
+              ? <div className="bg-white rounded-xl border border-slate-200 shadow-sm"><TableSkeleton columns={5} rows={8} /></div>
+              : viewType === "quarter_summary"
+              ? <CashflowQuarterSummaryTable
+                  rows={rows} quarterGroups={quarterGroups} fmt={fmt}
+                  filterText={filterText} setFilterText={setFilterText} canEdit={canEdit} stage={stage}
+                  overallComments={overallComments} onOverallChange={handleOverallChange}
+                  openingCash={openingCash}
+                />
+              : <CashflowTable
+                  rows={rows} months={months} canEdit={canEdit} stage={stage}
+                  cellComments={cellComments} overallComments={overallComments}
+                  onAdjChange={handleAdjChange}
+                  onAdjBlur={handleAdjBlur}
+                  onCommentChange={handleCommentChange}
+                  onOverallChange={handleOverallChange}
+                  fmt={fmt} filterText={filterText} setFilterText={setFilterText}
+                  openingCash={openingCash}
+                />}
+            <SaveBar hasChanges={hasChanges} saving={saving} onSave={_doSave} disabled={!canEdit}/>
+          </div>
         )}
 
-        {/* Driver Adjustments */}
+        {/* ══ DRIVERS TAB ════════════════════════════════════════════ */}
         {activeTab === "drivers" && (
-          loading
-            ? <TableSkeleton columns={5} rows={8} />
-            : <DriversTab rows={rows} months={months} monthPeriods={monthPeriods} quarterGroups={quarterGroups} viewType={viewType} canEdit={canEdit} fmt={fmt} driverAdj={driverAdj} onDriverChange={handleDriverChange}/>
+          <div>
+            {loading
+              ? <Spinner label="Loading drivers…"/>
+              : <DriversTab rows={driverRows} months={months} monthPeriods={monthPeriods} quarterGroups={quarterGroups}
+                  viewType={viewType} canEdit={canEdit} fmt={fmt} driverAdj={driverAdj}
+                  onDriverChange={handleDriverChange} onDriverCommentChange={handleDriverCommentChange}/>}
+            <SaveBar hasChanges={hasChanges} saving={saving} onSave={_doSave} label="Save Driver Adjustments" disabled={!canEdit}/>
+          </div>
         )}
 
-        {/* Scenarios */}
+        {/* ══ SCENARIOS TAB ══════════════════════════════════════════ */}
         {activeTab === "scenarios" && (
           <ScenariosTab
-            year={year} quarter={quarter} token={token} apiData={apiData}
+            year={year} quarter={quarter} apiData={apiData}
             scenariosList={scenariosList} scenariosLoading={scenariosLoading}
             onNewScenario={() => setScenarioModal({ open: true, edit: null })}
             onEdit={(sc) => setScenarioModal({ open: true, edit: sc })}
@@ -1807,44 +2009,10 @@ export default function CashflowForecasting() {
           />
         )}
 
-        {/* Comments */}
-        {activeTab === "comments" && (
-          <OverallChat year={year} quarter={quarter} token={token} API_BASE={API_BASE} addToast={addToast}/>
-        )}
-
-        <SaveBar hasChanges={hasChanges} saving={saving} onSave={_doSave} disabled={!canEdit} label="Save Adjustments"/>
+        {/* ── Overall Chat — below the tabs, as on the Revenue Forecast ── */}
+        <OverallChat year={year} quarter={quarter} token={token} API_BASE={API_BASE} addToast={addToast}/>
 
       </main>
-
-      {/* Footer summary bar hidden on request
-      {apiData && (
-        <div className="flex flex-wrap items-center gap-4 border-t border-sky-100 bg-white px-5 py-2 tabular-nums text-xs text-slate-500">
-          <span><span className="mr-1 inline-block h-[7px] w-[7px] rounded-full bg-sky-700" />{rows.length} components</span>
-          <span>Net Cash Flow: <strong className="text-sky-900">{fmt(totals.usrTotal)}</strong></span>
-          <span>AI Total: <strong className="text-sky-900">{fmt(totals.aiTotal)}</strong></span>
-          <span className={`font-extrabold ${variance >= 0 ? "text-emerald-700" : "text-rose-600"}`}>{variance >= 0 ? "▲" : "▼"} {Math.abs(Number(varPct))}% variance</span>
-          <span>Stage: <strong className="text-sky-700">{STAGE_LABELS?.[stage] || stage}</strong></span>
-          <span>Currency: <strong className="text-sky-700">{currency}</strong></span>
-          <span>Display: <strong className="text-sky-700">{CURRENCY_FILTER_OPTIONS.find((o) => o.value === currencyFilter)?.label}</strong></span>
-        </div>
-      )}
-      */}
-
-      {/* ── SAVE BAR ─────────────────────────────────────────────────────── */}
-      {hasChanges && (
-        <div className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-sky-200 bg-white px-5 py-2.5 shadow-lg">
-          <span className="text-x font-semibold text-amber-700">⚠ Unsaved changes</span>
-          <button onClick={() => { setHasChanges(false); setDriverAdj({}); fetchData(); }}
-            className="cursor-pointer rounded-lg border-0 bg-slate-100 px-3.5 py-[7px] text-x text-slate-500">
-            Discard
-          </button>
-          <button onClick={_doSave} disabled={saving || !canEdit}
-            className={`flex items-center gap-1.5 rounded-lg border-0 bg-sky-700 px-[18px] py-[7px] text-x font-bold text-white ${(saving || !canEdit) ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
-            {saving ? <><span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"/> Saving…</> : "💾 Save"}
-          </button>
-        </div>
-      )}
     </div>
   );
 }
-

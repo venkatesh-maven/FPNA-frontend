@@ -9,7 +9,9 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 // instead of waiting for every user to hit the TTL or clear storage by hand.
 // v3 (2026-10-16): customer drilldowns gained `drivers` (Breakdown tab); cached
 // responses from before that would hide the new sections for up to an hour.
-const STORAGE_PREFIX = "fpna_rc_v3_";
+// v4 (2026-10-28): cash flow statement gained the direct-method lines (cash
+// receipts / payments / cash position); old entries would show them empty.
+const STORAGE_PREFIX = "fpna_rc_v4_";
 const MAX_STORAGE_ENTRIES = 50;
 
 const memCache = new Map(); // url -> { data, ts }

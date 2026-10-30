@@ -9,10 +9,12 @@ import { motion } from "framer-motion";
 // (no AI call), so it is instant and always matches the figures on screen.
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// Handles "2025-01" (monthly), "2025-01-01T00:00:00" (YTD) and "Q1" (quarterly).
 const periodLabel = (p) => {
-  const m = /^(\d{4})-(\d{2})$/.exec(String(p || ""));
+  const m = /^(\d{4})-(\d{2})/.exec(String(p || ""));
   return m ? `${MONTHS[Number(m[2]) - 1]} ${m[1]}` : String(p ?? "");
 };
+const isQuarterLabel = (p) => /^Q[1-4]$/i.test(String(p || "").trim());
 
 const sum = (arr) => arr.reduce((a, b) => a + b, 0);
 const mean = (arr) => (arr.length ? sum(arr) / arr.length : 0);
@@ -25,7 +27,17 @@ const variability = (arr) => {
 };
 const pct = (part, whole) => (whole ? (part / whole) * 100 : null);
 const fmtPct = (v, dp = 1) => (v == null || !Number.isFinite(v) ? "—" : `${v.toFixed(dp)}%`);
-const growth = (arr) => (arr.length > 1 && arr[0] ? ((arr[arr.length - 1] - arr[0]) / Math.abs(arr[0])) * 100 : null);
+// Momentum: average of the later half of the periods vs the earlier half, as a %.
+// More robust than first-vs-last point, which a single unusual month can swing.
+const growth = (arr) => {
+  if (arr.length < 2) return null;
+  const h = Math.floor(arr.length / 2);
+  const early = mean(arr.slice(0, h));
+  const late = mean(arr.slice(arr.length - h));
+  return early ? ((late - early) / Math.abs(early)) * 100 : null;
+};
+// Change vs the same months of the prior year, as a %, or null without a usable base.
+const yoy = (cur, prev) => (prev == null || !prev || !Number.isFinite(cur) ? null : ((cur - prev) / Math.abs(prev)) * 100);
 const whole = (v) => Math.abs(v).toFixed(0);
 
 // { labels, values } for one dashboard chart, or null when it has no data.
@@ -65,21 +77,59 @@ const budgetGapPct = (budget, key) => {
  * insights = what is happening and why; actions = [{ lead, detail }] steps
  * for the business, most important first.
  */
-export function buildExecutiveInsight({ km, charts, budget }) {
-  const revenue = seriesOf(charts, "revenue_trend");
-  const cashflow = seriesOf(charts, "cashflow_trend");
+// Full-year sum of one actual-vs-forecast chart: [actual, forecast (rolling — closed months = actuals)].
+const forecastTotals = (forecast, key) => {
+  const ds = forecast?.[key]?.data?.datasets || [];
+  if (ds.length < 2) return null;
+  const actual = sum(ds[0].data.map((x) => Number(x) || 0));
+  const outlook = sum(ds[1].data.map((x) => Number(x) || 0));
+  return outlook ? { actual, outlook } : null;
+};
+
+export function buildExecutiveInsight({
+  km,
+  charts,
+  budget,
+  prevKm = null,
+  prevLabel = "",
+  monthsWithData = 0,
+  comparison = "None",
+  forecast = null,
+  forecastCompanyWideOnly = false,
+  money = (v) => String(Math.round(v)),
+}) {
+  const rawRevenue = seriesOf(charts, "revenue_trend");
+  const rawCashflow = seriesOf(charts, "cashflow_trend");
   // Expense and net-profit trends only come back when those widgets are on the
   // dashboard; otherwise rebuild them from the monthly actuals in the budget
   // data (expense = COGS + opex, net profit = revenue − expense — the same
   // basis as the headline totals).
-  const expense =
+  const rawExpense =
     seriesOf(charts, "expense_trend") ||
     combine(budgetActuals(budget, "AVB_COGS"), budgetActuals(budget, "AVB_OPEX"), (c, o) => c + o);
-  const netProfit = seriesOf(charts, "net_profit_trend") || combine(revenue, expense, (r, e) => r - e);
+  const rawNetProfit = seriesOf(charts, "net_profit_trend") || combine(rawRevenue, rawExpense, (r, e) => r - e);
+
+  // "quarter" when the dashboard is on the Quarterly time filter, else "month".
+  const unit = (rawRevenue || rawNetProfit)?.labels?.some(isQuarterLabel) ? "quarter" : "month";
+
+  // A partial last quarter (e.g. only October of Q4) would read as a collapse
+  // in trend and best/worst — leave it out of the period-by-period analysis.
+  // Headline totals (km) still include it.
+  const partialQuarter = unit === "quarter" && monthsWithData > 0 && monthsWithData % 3 !== 0;
+  const trim = (s) => (partialQuarter && s && s.values.length > 1 ? { labels: s.labels.slice(0, -1), values: s.values.slice(0, -1) } : s);
+  const revenue = trim(rawRevenue);
+  const cashflow = trim(rawCashflow);
+  const expense = trim(rawExpense);
+  const netProfit = trim(rawNetProfit);
 
   if (!km.revenue && !km.expense && !km.netProfit) {
-    return { insights: ["There is no financial activity in this view yet."], actions: [], bestMonth: null, worstMonth: null };
+    return { insights: ["There is no financial activity in this view yet."], actions: [], bestMonth: null, worstMonth: null, unit };
   }
+
+  // Year over year, against the same months of the prior fiscal year.
+  const revYoY = prevKm ? yoy(km.revenue, prevKm.revenue) : null;
+  const expYoY = prevKm ? yoy(km.expense, prevKm.expense) : null;
+  const npYoY = prevKm ? yoy(km.netProfit, prevKm.netProfit) : null;
 
   const hasTrend = !!revenue && revenue.values.length >= 3;
   const revGrowth = hasTrend ? growth(revenue.values) : null;
@@ -90,8 +140,10 @@ export function buildExecutiveInsight({ km, charts, budget }) {
   const cashConversion = km.netProfit > 0 ? pct(km.cashFlow, km.netProfit) : null;
   const cashNegativeDespiteProfit = km.netProfit > 0 && km.cashFlow < 0;
   const negativeCashPeriods = cashflow ? cashflow.values.filter((x) => x < 0).length : 0;
-  const revGap = budgetGapPct(budget, "AVB_Revenue");
-  const opexGap = budgetGapPct(budget, "AVB_OPEX");
+  // In forecast mode the read-out is about the forecast, not the budget.
+  const useBudget = comparison !== "ActualVsForecast";
+  const revGap = useBudget ? budgetGapPct(budget, "AVB_Revenue") : null;
+  const opexGap = useBudget ? budgetGapPct(budget, "AVB_OPEX") : null;
   const revShort = revGap != null && revGap <= -2;
   const costsOutpacing = expGrowth != null && revGrowth != null && expGrowth > revGrowth + 2;
 
@@ -123,31 +175,94 @@ export function buildExecutiveInsight({ km, charts, budget }) {
     insights.push("Profitability is healthy, with costs comfortably covered by revenue.");
   }
 
+  // Comparison-filter specific read-out, placed right after the margin headline.
+  let npBudgetGap = null;
+  let forecastStepUp = null;
+  let remainingMonths = 0;
+  let requiredAvg = null;
+  if (comparison === "ActualVsBudget") {
+    const ds = (k, i) => (budget?.[k]?.data?.datasets?.[i]?.data || []).map((x) => Number(x) || 0);
+    const bRev = sum(ds("AVB_Revenue", 1));
+    const bCost = sum(ds("AVB_COGS", 1)) + sum(ds("AVB_OPEX", 1));
+    const bNp = bRev - bCost;
+    const costGap = bCost ? pct(km.expense - bCost, Math.abs(bCost)) : null;
+    npBudgetGap = bNp ? pct(km.netProfit - bNp, Math.abs(bNp)) : null;
+    if (npBudgetGap != null) {
+      const npWord = Math.abs(npBudgetGap) < 1 ? "on budget" : `${fmtPct(Math.abs(npBudgetGap))} ${npBudgetGap > 0 ? "above" : "below"} budget`;
+      const costWord =
+        costGap == null ? "" : Math.abs(costGap) < 1 ? ", with costs on budget" : `, with costs ${fmtPct(Math.abs(costGap))} ${costGap > 0 ? "over" : "under"} budget`;
+      insights.push(`Against budget for the same period, net profit is ${npWord}${costWord}.`);
+    }
+  } else if (comparison === "ActualVsForecast" && forecastCompanyWideOnly) {
+    insights.push("The forecast is only available for the whole company, so this entity isn't compared against it — clear the Entity filter to see progress against forecast.");
+  } else if (comparison === "ActualVsForecast") {
+    const rev = forecastTotals(forecast, "AVF_Revenue");
+    const np = forecastTotals(forecast, "AVF_NetProfit");
+    remainingMonths = monthsWithData ? 12 - monthsWithData : 0;
+    if (rev) {
+      insights.push(
+        `On the current forecast, the full year lands at about ${money(rev.outlook)} of revenue${np ? ` and ${money(np.outlook)} of net profit` : ""}.`
+      );
+      if (remainingMonths > 0 && monthsWithData > 0) {
+        const runRate = rev.actual / monthsWithData;
+        requiredAvg = (rev.outlook - rev.actual) / remainingMonths;
+        forecastStepUp = runRate ? pct(requiredAvg - runRate, Math.abs(runRate)) : null;
+        if (forecastStepUp != null && Math.abs(forecastStepUp) >= 3) {
+          insights.push(
+            forecastStepUp > 0
+              ? `Getting there needs the remaining ${remainingMonths} month${remainingMonths === 1 ? "" : "s"} to average ${money(requiredAvg)} of revenue — ${whole(forecastStepUp)}% above the run rate so far.`
+              : `The forecast assumes the remaining ${remainingMonths} month${remainingMonths === 1 ? "" : "s"} average ${money(requiredAvg)} of revenue — ${whole(forecastStepUp)}% below the run rate so far, so it looks conservative.`
+          );
+        } else if (forecastStepUp != null) {
+          insights.push("The forecast for the rest of the year is in line with the run rate so far.");
+        }
+      }
+    }
+  }
+
+  // Year over year: revenue and net profit vs the same months last year.
+  if (revYoY != null) {
+    const revWord = Math.abs(revYoY) < 1 ? "flat" : revYoY > 0 ? `up ${fmtPct(Math.abs(revYoY))}` : `down ${fmtPct(Math.abs(revYoY))}`;
+    const npPart =
+      npYoY == null || (km.netProfit < 0) !== (prevKm.netProfit < 0)
+        ? ""
+        : Math.abs(npYoY) < 1
+        ? ", with net profit flat"
+        : `, while net profit is ${npYoY > 0 ? "up" : "down"} ${fmtPct(Math.abs(npYoY))}`;
+    insights.push(`Compared with the same period of ${prevLabel || "last year"}, revenue is ${revWord}${npPart}.`);
+  }
+
+  // Momentum within the year: recent periods vs earlier ones.
   const direction = revGrowth == null ? null : revGrowth <= -2 ? "slipping" : revGrowth >= 2 ? "growing" : "flat";
+  const momentum = `in recent ${unit}s compared with earlier in the year`;
   if (revShort) {
     insights.push(
       direction === "growing"
-        ? `Revenue is growing, but not fast enough to meet plan — it is about ${whole(revGap)}% short of budget.`
+        ? `Revenue is picking up, but not fast enough to meet plan — it is about ${whole(revGap)}% short of budget.`
         : direction === "slipping"
-        ? `Revenue has slipped about ${whole(revGrowth)}% since the start of the period and is about ${whole(revGap)}% short of budget — the plan assumed growth that isn't materialising.`
-        : `Revenue is holding flat while the budget assumed growth, leaving it about ${whole(revGap)}% short of plan.`
+        ? `Revenue has softened about ${whole(revGrowth)}% ${momentum} and is about ${whole(revGap)}% short of budget — the plan assumed growth that isn't materialising.`
+        : `Revenue is holding steady while the budget assumed growth, leaving it about ${whole(revGap)}% short of plan.`
     );
   } else if (revGap != null && revGap >= 2) {
     insights.push(
-      `Revenue is ahead of budget by about ${whole(revGap)}%${direction === "slipping" ? ", though momentum has faded since the start of the period" : ""}.`
+      `Revenue is ahead of budget by about ${whole(revGap)}%${direction === "slipping" ? `, though it has softened ${momentum}` : ""}.`
     );
+  } else if (revGap != null && Math.abs(revGap) < 2 && direction !== "slipping") {
+    insights.push("Revenue is tracking in line with budget.");
   } else if (direction === "slipping") {
-    insights.push(`Revenue has slipped about ${whole(revGrowth)}% since the start of the period.`);
+    insights.push(`Revenue has softened about ${whole(revGrowth)}% ${momentum}.`);
   } else if (direction === "growing") {
     insights.push(
-      `Revenue has grown about ${whole(revGrowth)}% since the start of the period${revVolatility < 6 ? " on steady demand" : ", with sizeable month-to-month swings"}.`
+      `Revenue has risen about ${whole(revGrowth)}% ${momentum}${revVolatility < 6 ? " on steady demand" : `, with sizeable ${unit}-to-${unit} swings`}.`
     );
   } else if (direction === "flat") {
-    insights.push(`Revenue is steady${revVolatility < 6 ? " and predictable month to month" : " overall but swings noticeably month to month"}.`);
+    insights.push(`Revenue is steady${revVolatility < 6 ? ` and predictable ${unit} to ${unit}` : ` overall but swings noticeably ${unit} to ${unit}`}.`);
   }
 
   if (costsOutpacing) {
     insights.push(revGrowth < 0 ? "Costs have not come down with revenue, which is eroding margin." : "Costs are rising faster than revenue, which is squeezing margin.");
+  } else if (revYoY != null && expYoY != null && expYoY > revYoY + 2) {
+    insights.push(`Costs are up ${fmtPct(expYoY - revYoY)} more than revenue versus last year, which is squeezing margin.`);
   } else if (revShort && opexGap != null && opexGap <= -2) {
     insights.push("Operating spend is under budget, which is cushioning profit — but it masks the revenue shortfall rather than fixing it.");
   }
@@ -165,8 +280,8 @@ export function buildExecutiveInsight({ km, charts, budget }) {
   if (worstMonth && weakDriver) {
     insights.push(
       weakDriver === "demand"
-        ? `The weakest month, ${worstMonth}, came from a dip in sales rather than overspending.`
-        : `The weakest month, ${worstMonth}, came from a spending spike rather than weaker sales.`
+        ? `The weakest ${unit}, ${worstMonth}, came from a dip in sales rather than overspending.`
+        : `The weakest ${unit}, ${worstMonth}, came from a spending spike rather than weaker sales.`
     );
   }
 
@@ -176,23 +291,34 @@ export function buildExecutiveInsight({ km, charts, budget }) {
     if (when && actions.length < 3) actions.push({ lead, detail });
   };
   const worstMonthName = worstMonth ? worstMonth.split(" ")[0] : "";
+  const costsOutpacingYoY = !costsOutpacing && revYoY != null && expYoY != null && expYoY > revYoY + 2;
   add(loss, "Return to profit", "reprice or exit the lowest-margin products and customers, and pause discretionary spend until monthly results turn positive.");
+  add(
+    forecastStepUp != null && forecastStepUp >= 5,
+    "Validate the forecast step-up",
+    `confirm the pipeline supports ${money(requiredAvg)} of monthly revenue for the rest of the year, or re-forecast to the current run rate.`
+  );
+  add(
+    npBudgetGap != null && npBudgetGap <= -5,
+    "Close the profit gap to budget",
+    "review the largest revenue and cost variances by month and assign owners to recover them."
+  );
   add(revShort, "Recover the revenue shortfall", "focus account teams on renewals, upsell and pipeline conversion with the largest customers for the rest of the year.");
   add(revShort && opexGap != null && opexGap <= -2, "Reinvest the budget underspend", "redirect part of the unspent operating budget into targeted sales and marketing campaigns.");
-  add(costsOutpacing, "Hold cost growth below revenue growth", "freeze new discretionary commitments and renegotiate the largest supplier contracts.");
-  add(revGap == null && direction === "slipping", "Reverse the revenue slide", "launch retention offers and price reviews for the top accounts.");
+  add(costsOutpacing || costsOutpacingYoY, "Hold cost growth below revenue growth", "freeze new discretionary commitments and renegotiate the largest supplier contracts.");
+  add(!revShort && ((revGap == null && direction === "slipping") || (revYoY != null && revYoY <= -5)), "Reverse the revenue slide", "launch retention offers and price reviews for the top accounts.");
   add(!loss && costRatio != null && costRatio >= 80, "Widen margins", "raise prices selectively where demand is steady and take a few points out of the largest cost categories.");
   add(cashNegativeDespiteProfit, "Release cash from operations", "speed up collections and bring inventory down so profit turns into cash.");
   add(cashConversion != null && cashConversion < 70, "Improve cash conversion", "tighten payment terms and collections.");
   add(cashConversion != null && cashConversion >= 150, "Put surplus cash to work", "pay down debt or fund growth projects instead of holding idle balances.");
-  add(revVolatility >= 6, "Smooth revenue", "grow recurring and contracted revenue to reduce month-to-month swings.");
-  add(weakDriver === "demand", "Get ahead of the seasonal dip", `plan promotions and pipeline pushes before ${worstMonthName}.`);
+  add(revVolatility >= 6, "Smooth revenue", `grow recurring and contracted revenue to reduce ${unit}-to-${unit} swings.`);
+  add(weakDriver === "demand", "Get ahead of the seasonal dip", `plan promotions and pipeline pushes before ${unit === "quarter" ? worstMonth : worstMonthName}.`);
   add(weakDriver === "spend", "Control one-off spend", `add approval limits on large purchases to prevent spikes like ${worstMonth}.`);
   if (!actions.length) {
-    add(true, "Build on the strongest month", `repeat the sales and pricing conditions behind ${bestMonth || "the best-performing months"}.`);
+    add(true, `Build on the strongest ${unit}`, `repeat the sales and pricing conditions behind ${bestMonth || `the best-performing ${unit}s`}.`);
   }
 
-  return { insights: insights.slice(0, 4), actions, bestMonth, worstMonth };
+  return { insights: insights.slice(0, 6), actions, bestMonth, worstMonth, unit };
 }
 
 const MetricRow = ({ label, display, value, isText = false }) => {
@@ -213,20 +339,28 @@ const MetricRow = ({ label, display, value, isText = false }) => {
 };
 
 /** Key metrics + executive insight card for the bottom of the dashboard. */
-export default function ExecutiveInsight({ keymetrics, charts, budget, parseMetric, renderValue, currency, currencyFilter }) {
-  const km = useMemo(
-    () => ({
-      revenue: parseMetric(keymetrics?.Revenue),
-      grossProfit: parseMetric(keymetrics?.Grossprofit),
-      netProfit: parseMetric(keymetrics?.NetProfit),
-      expense: parseMetric(keymetrics?.Expense),
-      cashFlow: parseMetric(keymetrics?.cashflow),
-      headcount: Number(keymetrics?.headcount ?? 0) || 0,
-    }),
-    [keymetrics, parseMetric]
-  );
+export default function ExecutiveInsight({ comparison = "None", forecast = null, forecastCompanyWideOnly = false, keymetrics, prevKeymetrics, prevLabel, monthsWithData = 0, charts, budget, parseMetric, renderValue, currency, currencyFilter }) {
+  const toKm = (m) => ({
+    revenue: parseMetric(m?.Revenue),
+    grossProfit: parseMetric(m?.Grossprofit),
+    netProfit: parseMetric(m?.NetProfit),
+    expense: parseMetric(m?.Expense),
+    cashFlow: parseMetric(m?.cashflow),
+    headcount: Number(m?.headcount ?? 0) || 0,
+  });
+  const km = useMemo(() => toKm(keymetrics), [keymetrics, parseMetric]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Prior year (same months) — only usable when it actually had activity.
+  const prevKm = useMemo(() => {
+    if (!prevKeymetrics) return null;
+    const p = toKm(prevKeymetrics);
+    return p.revenue || p.expense || p.netProfit ? p : null;
+  }, [prevKeymetrics, parseMetric]); // eslint-disable-line react-hooks/exhaustive-deps
   const money = (v) => renderValue(v, currency, currencyFilter);
-  const insight = useMemo(() => buildExecutiveInsight({ km, charts, budget }), [km, charts, budget]);
+  const insight = useMemo(
+    () => buildExecutiveInsight({ km, charts, budget, prevKm, prevLabel, monthsWithData, comparison, forecast, forecastCompanyWideOnly, money }),
+    [km, charts, budget, prevKm, prevLabel, monthsWithData, comparison, forecast, forecastCompanyWideOnly, currency, currencyFilter] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const unitName = insight.unit === "quarter" ? "Quarter" : "Month";
   const netMargin = pct(km.netProfit, km.revenue);
 
   return (
@@ -246,8 +380,8 @@ export default function ExecutiveInsight({ keymetrics, charts, budget, parseMetr
           <MetricRow label="Net Profit" value={km.netProfit} display={money(km.netProfit)} />
           <MetricRow label="Net Margin %" value={netMargin} display={fmtPct(netMargin)} />
           <MetricRow label="Cash Flow" value={km.cashFlow} display={money(km.cashFlow)} />
-          <MetricRow label="Best Month" isText display={insight.bestMonth || "--"} />
-          <MetricRow label="Worst Month" isText display={insight.worstMonth || "--"} />
+          <MetricRow label={`Best ${unitName}`} isText display={insight.bestMonth || "--"} />
+          <MetricRow label={`Worst ${unitName}`} isText display={insight.worstMonth || "--"} />
         </div>
 
         <div className="bg-sky-50 md:col-span-2 border border-sky-200 rounded-lg p-3 flex flex-col justify-center gap-2">

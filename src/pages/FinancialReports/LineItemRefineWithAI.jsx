@@ -64,6 +64,8 @@ export function LineItemAIButton({ label, hasCommentary, onClick, noun = "varian
  * (`buildContext(line.key)`), the user refines it with context / corrections /
  * management judgment as many times as needed, then accepts it as that row's
  * saved commentary (`lineCommentary` = hooks/useLineItemCommentary).
+ * Optional `fallbackDraft(lineKey)` -> { explanation, recommendation } is used
+ * as the first draft when the AI call fails (e.g. provider out of credits).
  */
 export default function LineItemRefineWithAI({
   line,
@@ -72,12 +74,14 @@ export default function LineItemRefineWithAI({
   reportLabel,
   filterLabels,
   buildContext,
+  fallbackDraft,
   subtitle = "variance explanation & recommendation",
 }) {
   const [versions, setVersions] = useState([]);
   const [baseInstructions, setBaseInstructions] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState(""); // AI unavailable, built-in draft shown
   const [input, setInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -96,10 +100,12 @@ export default function LineItemRefineWithAI({
       latest.explanation !== saved.explanation ||
       (latest.recommendation || null) !== (saved.recommendation || null));
 
-  const run = async (params, onDone) => {
+  // `onFail(err)` returns true when it handled the failure itself.
+  const run = async (params, onDone, onFail) => {
     const id = ++requestId.current;
     setGenerating(true);
     setError("");
+    setNotice("");
     try {
       const draft = await lineCommentary.explain({
         reportLabel,
@@ -111,16 +117,24 @@ export default function LineItemRefineWithAI({
       });
       if (id === requestId.current) onDone(draft);
     } catch (err) {
-      if (id === requestId.current) setError(err.message);
+      if (id === requestId.current && !onFail?.(err)) setError(err.message);
     } finally {
       if (id === requestId.current) setGenerating(false);
     }
   };
 
+  const startFrom = (draft) => {
+    setBaseInstructions([]);
+    setVersions([{ id: Date.now(), instruction: null, ...draft }]);
+  };
+
   const generateFresh = () =>
-    run({}, (draft) => {
-      setBaseInstructions([]);
-      setVersions([{ id: Date.now(), instruction: null, ...draft }]);
+    run({}, startFrom, (err) => {
+      const draft = fallbackDraft?.(line.key);
+      if (!draft?.explanation) return false;
+      startFrom({ ...draft, builtIn: true });
+      setNotice(`${err.message} Showing the built-in commentary computed from the report data - you can edit, accept and save it.`);
+      return true;
     });
 
   // Start from the saved commentary if there is one, otherwise draft it.
@@ -129,6 +143,7 @@ export default function LineItemRefineWithAI({
     setVersions([]);
     setBaseInstructions([]);
     setError("");
+    setNotice("");
     setInput("");
     setGenerating(false);
     if (!line) return;
@@ -307,6 +322,12 @@ export default function LineItemRefineWithAI({
               {!generating && error && (
                 <div className="max-w-[90%] rounded-lg px-3 py-2 text-x bg-white border border-red-200 text-red-700 rounded-bl-none shadow-sm">
                   {error}
+                </div>
+              )}
+
+              {!generating && notice && (
+                <div className="max-w-[90%] rounded-lg px-3 py-2 text-x bg-amber-50 border border-amber-200 text-amber-800 rounded-bl-none shadow-sm">
+                  {notice}
                 </div>
               )}
               <div ref={bottomRef} />

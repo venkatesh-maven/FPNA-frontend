@@ -163,7 +163,6 @@
   const IntegrationDetails = lazy(() => import('../pages/SettingsCustomization/GL-Uploads/ExcelIntegrationDetailsView'));
   const FinancialReports = lazy(() => import('../pages/FinancialCustomeCoreResult/FinancialReportsCoreResult'));
   const PLDashboard = lazy(() => import('../pages/FinancialCustomeCoreResult/PLDashboard'));
-  const CashFlowStatement = lazy(() => import('../pages/FinancialCustomeCoreResult/CashFlowStatement'));
   const BalanceSheet = lazy(() => import('../pages/FinancialCustomeCoreResult/BalanceSheet'));
   const ARAgingReport = lazy(() => import('../pages/FinancialCustomeCoreResult/ARAgingReport'));
   const APAgingReport = lazy(() => import('../pages/FinancialCustomeCoreResult/APAgingReport'));
@@ -481,7 +480,7 @@ const RecruiterAccessAdminPage = lazy(() => import('../pages/RecruiterAnalytics/
               <Route path="/gl-upload-screen" element={<GLUploadScreen />} />
               <Route path="/cash-flow" element={<CashFlow />} />
               <Route path="/profit-analysis" element={<ProfitAnalysis />} />
-              <Route path="/cash-flow-dashboard" element={<CashFlowStatement />} />
+              <Route path="/cash-flow-dashboard" element={<Navigate to="/reports/cashflow/detailed" replace />} />
                           <Route path="/balance-sheet-dashboard" element={<BalanceSheet />} />
                           <Route path="/ar-aging-dashboard" element={<ARAgingReport />} />
                           <Route path="/ap-aging-dashboard" element={<APAgingReport />} />
@@ -508,6 +507,7 @@ const RecruiterAccessAdminPage = lazy(() => import('../pages/RecruiterAnalytics/
 
   <Route path="/reports/pnl" element={<PnLPage />} />
   <Route path="/reports/cashflow" element={<CashFlowPage />} />
+  <Route path="/reports/cashflow/detailed" element={<CashFlowPage detailed />} />
   <Route path="/reports/revenue" element={<RevenuePage />} />
   <Route path="/reports/customer-profit" element={<CustomerProfitPage />} />
   <Route path="/reports/balance-sheet" element={<BalanceSheetPage />} />
