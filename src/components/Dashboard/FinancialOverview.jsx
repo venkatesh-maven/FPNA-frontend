@@ -589,6 +589,9 @@ const fetchWidgetsForModal = async () => {
             prevYear,
             prevKeymetrics,
             prevLoading: !hasPrev && dataMonths.length > 0,
+            // Backend-computed % change per KPI (from unscaled totals); null
+            // from a backend that doesn't send it.
+            keymetricsChange: data.keymetrics_change || null,
             charts: normalized.charts,
             // Not charted in this mode, but the executive insight compares against it.
             budget: Array.isArray(data?.actual_vs_budget_trend)
@@ -885,7 +888,8 @@ const fetchWidgetsForModal = async () => {
 
   /** ===================== KPI DATA ===================== */
   // Cards always show actuals; what they're compared against follows the
-  // Comparison filter: None → prior fiscal year (same months), Actual vs
+  // Comparison filter: None → prior fiscal year (same months), or month over
+  // month where the prior year has no value for that KPI, Actual vs
   // Budget → budget for the same months, Actual vs Forecast → progress
   // against the full-year (rolling) forecast.
   const getKPIData = useCallback(() => {
@@ -903,9 +907,10 @@ const fetchWidgetsForModal = async () => {
     const monthRange =
       months.length && months.length < 12 ? `${MON[Number(months[0]) - 1]}–${MON[Number(months[months.length - 1]) - 1]}` : "";
     const sumSeries = (chart, i) => (chart?.data?.datasets?.[i]?.data || []).reduce((a, v) => a + (Number(v) || 0), 0);
+    const formatPct = (rounded) => (rounded === 0 ? "0%" : `${rounded > 0 ? "+" : ""}${rounded.toFixed(1)}%`);
     const pctChange = (value, base) => {
       const rounded = Math.round(((value - base) / Math.abs(base)) * 1000) / 10;
-      return { change: rounded === 0 ? "0%" : `${rounded > 0 ? "+" : ""}${rounded.toFixed(1)}%`, changePct: rounded };
+      return { change: formatPct(rounded), changePct: rounded };
     };
 
     // ── Actual vs Budget: same months as the actuals (budget rows are joined to them).
@@ -985,7 +990,33 @@ const fetchWidgetsForModal = async () => {
     // Tooltip names the compared months when the selected year is partial.
     const prevDetail = monthRange ? `${prevLabel} (${monthRange}, same months)` : prevLabel;
 
+    // The backend's change, when sent, is preferred: it's computed from
+    // unscaled totals and falls back to month over month per KPI. The
+    // prior-year value (tooltip) only applies when it compared against FY.
+    const serverChange = financialData?.keymetricsChange;
+    const SERVER_KEYS = {
+      revenue: "Revenue",
+      gross_profit: "Grossprofit",
+      expenses: "Expense",
+      net_profit: "NetProfit",
+      cash_flow: "cashflow",
+      headcount: "headcount",
+    };
+
     const kpi = (key, value) => {
+      if (serverChange) {
+        const c = serverChange[SERVER_KEYS[key]];
+        if (!c || !Number.isFinite(c.pct)) return { value, change: null, changePct: null };
+        const isPrevYear = c.vs === prevLabel;
+        return {
+          value,
+          change: formatPct(c.pct),
+          changePct: c.pct,
+          prevValue: isPrevYear && prev ? prev[key] : null,
+          prevLabel: c.vs,
+          prevDetail: isPrevYear ? prevDetail : c.vs,
+        };
+      }
       const p = prevHasData ? prev[key] : null;
       if (p == null || p === 0)
         return { value, change: null, changePct: null, prevValue: p, prevLabel, prevDetail, prevLoading: !!financialData?.prevLoading };

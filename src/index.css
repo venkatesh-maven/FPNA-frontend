@@ -538,7 +538,8 @@ button{
   opacity: 0;
   transition: opacity 0.15s;
 }
-th:hover > .col-resize-handle::after {
+th:hover > .col-resize-handle::after,
+td:hover > .col-resize-handle::after {
   opacity: 0.3;
 }
 .col-resize-handle:hover::after,

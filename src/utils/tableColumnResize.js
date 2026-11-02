@@ -2,7 +2,9 @@
 // edge of a header cell to resize that column, double-click it to fit the
 // column to its content. Tables need no changes — a document-wide
 // MutationObserver finds them (and notices React re-renders) and attaches
-// the handles. Opt a table out with the `data-no-col-resize` attribute.
+// the handles. A table without a <thead> (the key/value drill-down tables)
+// gets them on its first row. Opt a table out with the `data-no-col-resize`
+// attribute.
 //
 // The first drag "freezes" the table: every column keeps its current width
 // (via a <colgroup>) and the table switches to `table-layout: fixed`, so a
@@ -31,10 +33,11 @@ const frozen = new WeakMap();
 // resize handle sits on the cell covering it in the bottom header row; a
 // cell spanning several columns resizes its last one.
 function headerLayout(table) {
-  const head = table.tHead;
-  if (!head || !head.rows.length) return null;
+  const hasHead = table.tHead?.rows.length > 0;
+  const rows = hasHead ? Array.from(table.tHead.rows) : Array.from(table.tBodies[0]?.rows || []).slice(0, 1);
+  if (!rows.length) return null;
   const grid = [];
-  Array.from(head.rows).forEach((tr, r) => {
+  rows.forEach((tr, r) => {
     grid[r] = grid[r] || [];
     let c = 0;
     for (const cell of tr.cells) {
@@ -48,7 +51,7 @@ function headerLayout(table) {
       c += colSpan;
     }
   });
-  const last = grid[head.rows.length - 1] || [];
+  const last = grid[rows.length - 1] || [];
   const count = last.length;
   if (!count || last.includes(undefined)) return null;
 
@@ -59,7 +62,10 @@ function headerLayout(table) {
   // Sort arrows (⇅ ↑ ↓) change on every sort — leave them out of the signature.
   const label = (cell) =>
     (cell.textContent || "").replace(/[^\p{L}\p{N}%&\-\s]/gu, "").replace(/\s+/g, " ").trim();
-  const signature = `${count}|${last.filter((cell, c) => last[c - 1] !== cell).map(label).join("|")}`;
+  // A first body row holds data, not labels — it changes with every record.
+  const signature = hasHead
+    ? `${count}|${last.filter((cell, c) => last[c - 1] !== cell).map(label).join("|")}`
+    : `${count}|no-header`;
   return { grid, last, count, edges, signature };
 }
 
