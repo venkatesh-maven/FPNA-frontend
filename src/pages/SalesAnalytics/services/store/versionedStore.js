@@ -36,6 +36,11 @@ export function createVersionedStore({ key, version = 1, defaults, storage = saf
     key: fullKey,
     read,
     write,
+    /** Replace the value with the server's copy without echoing it back as a change. */
+    hydrate: (value) => {
+      memory = value === undefined || value === null ? clone(defaults) : value;
+      listeners.forEach((l) => l(memory, { hydrated: true }));
+    },
     update: (fn) => write(fn(clone(read()))),
     reset: () => write(clone(defaults)),
     subscribe: (listener) => {

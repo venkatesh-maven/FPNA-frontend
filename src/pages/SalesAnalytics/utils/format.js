@@ -2,8 +2,25 @@
 
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 
+// The Currency Unit filter. Null keeps each figure's own format; a screen that
+// offers the filter sets it, and then it decides every money figure on screen.
+let currencyUnit = null;
+export const setCurrencyUnit = (unit) => {
+  currencyUnit = unit;
+};
+
+const inUnit = (v, symbol) => {
+  const sign = v < 0 ? "-" : "";
+  const a = Math.abs(v);
+  const number = (n, digits) => n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  if (currencyUnit === "thousands") return `${sign}${symbol}${number(a / 1e3, 1)}K`;
+  if (currencyUnit === "millions") return `${sign}${symbol}${number(a / 1e6, 2)}M`;
+  return `${sign}${symbol}${number(a, 0)}`;
+};
+
 export const money = (v, { compact: c = false, symbol = "$", decimals = 0 } = {}) => {
   if (!isNum(v)) return "—";
+  if (currencyUnit) return inUnit(v, symbol);
   if (c) return `${v < 0 ? "-" : ""}${symbol}${compactNumber(Math.abs(v))}`;
   return `${v < 0 ? "-" : ""}${symbol}${Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
 };

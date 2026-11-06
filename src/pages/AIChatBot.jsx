@@ -15,6 +15,7 @@ import {
 } from "../utils/fpnaAssistant";
 import { AuthContext } from "../context/AuthContext";
 import FindAWayCard from "./FindAWayCard";
+import AICreditsBadge from "./AICredits/AICreditsBadge";
 
 const MAX_HISTORY_TURNS = 10;
 
@@ -608,6 +609,7 @@ const AIChatBot = () => {
                   ))}
                 </select>
               </div>
+              <AICreditsBadge refreshKey={activeChat?.messages?.length} />
             </div>
 
           </div>

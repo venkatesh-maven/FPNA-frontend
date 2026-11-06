@@ -19,6 +19,7 @@ import {
   FiMessageSquare,
   FiFile,
   FiTrendingUp,
+  FiCpu,
 } from "react-icons/fi";
 import { SlCalculator } from "react-icons/sl";
 
@@ -39,6 +40,7 @@ const iconComponents = {
   FiMessageSquare,
   FiFile,
   FiTrendingUp,
+  FiCpu,
   SlCalculator,
   // TbWorldUpload,
 };
@@ -319,20 +321,6 @@ const MENUITEMS = [
             ],
           },
           {
-            path: "/hr-workforce",
-            type: "link",
-            title: "HR & Workforce Analytics",
-            icon: { name: "FiFile" },
-            children: [
-              { path: "/employee-productivity-report", type: "link", title: "Employee Productivity Report ", icon: { name: "FiFile" } },
-              { path: "/utilization-rate-report", type: "link", title: "Utilization Rate Report ", icon: { name: "FiFile" } },
-              { path: "/retention-attrition-rate", type: "link", title: "Retention & Attrition Rate Analysis ", icon: { name: "FiFile" } },
-              { path: "/hiring-funnel-metrics", type: "link", title: "Hiring Funnel Metrics ", icon: { name: "FiFile" } },
-              { path: "/diversity-inclusion-metrics", type: "link", title: "Diversity & Inclusion Metrics", icon: { name: "FiFile" } },
-              { path: "/compensation-benefits", type: "link", title: "Compensation & Benefits Analysis ", icon: { name: "FiFile" } },
-            ],
-          },
-          {
             path: "/it-technology-spend",
             type: "link",
             title: "IT & Technology Spend Analytics ",
@@ -382,6 +370,7 @@ const MENUITEMS = [
             type: "link",
             title: "Recruitment Performance Analytics",
             icon: { name: "FiFile" },
+            hidden: true, // Hidden per request (2026-11-06)
             children: [
               { path: "/recruitment-performance-dashboard", type: "link", title: "Recruitment Performance Dashboard ", icon: { name: "FiFile" } },
               { path: "/recruitment-executive-dashboard", type: "link", title: "Executive Dashboard", icon: { name: "FiFile" } },
@@ -425,6 +414,20 @@ const MENUITEMS = [
               { path: "/recruiter-analytics/what-if", type: "link", title: "What-If & Forecast", icon: { name: "FiFile" } },
               { path: "/recruiter-analytics/team-forecast", type: "link", title: "Team Forecast", icon: { name: "FiFile" } },
               { path: "/recruiter-analytics/access", type: "link", title: "Access", icon: { name: "FiFile" } },
+            ],
+          },
+          {
+            path: "/hr-workforce",
+            type: "link",
+            title: "HR & Workforce Analytics",
+            icon: { name: "FiFile" },
+            children: [
+              { path: "/employee-productivity-report", type: "link", title: "Employee Productivity Report ", icon: { name: "FiFile" } },
+              { path: "/utilization-rate-report", type: "link", title: "Utilization Rate Report ", icon: { name: "FiFile" } },
+              { path: "/retention-attrition-rate", type: "link", title: "Retention & Attrition Rate Analysis ", icon: { name: "FiFile" } },
+              { path: "/hiring-funnel-metrics", type: "link", title: "Hiring Funnel Metrics ", icon: { name: "FiFile" } },
+              { path: "/diversity-inclusion-metrics", type: "link", title: "Diversity & Inclusion Metrics", icon: { name: "FiFile" } },
+              { path: "/compensation-benefits", type: "link", title: "Compensation & Benefits Analysis ", icon: { name: "FiFile" } },
             ],
           },
           // {
@@ -547,6 +550,13 @@ const MENUITEMS = [
             type: "link",
             title: "User Management",
             icon: { name: "FiUsers" },
+            adminOnly: true,
+          },
+          {
+            path: "/settings-customization/ai-credits",
+            type: "link",
+            title: "AI Usage & Credits",
+            icon: { name: "FiCpu" },
             adminOnly: true,
           },
         ],

@@ -147,13 +147,28 @@ function healthWindows(ctx) {
 // Pipeline: snapshot, landing value, coverage and trend.
 
 /** Expected value spread evenly over the deal's duration from its expected start; the part between two dates. */
-function landing(o, value, fromDate, toDate) {
-  const days = Math.max(1, Math.round(Math.min(12, o.durationMonths) * 30.4));
-  const end = addDays(o.expectedStart, days - 1);
-  const a = o.expectedStart > fromDate ? o.expectedStart : fromDate;
-  const b = end < toDate ? end : toDate;
+const dayNumber = (date) => Date.UTC(+date.slice(0, 4), +date.slice(5, 7) - 1, +date.slice(8, 10)) / 86400000;
+
+// Each deal's revenue window as day numbers, worked out once: coverage asks for every open deal on several dates.
+const spans = new WeakMap();
+const spanOf = (o) => {
+  let span = spans.get(o);
+  if (!span) {
+    const days = Math.max(1, Math.round(Math.min(12, o.durationMonths) * 30.4));
+    const start = dayNumber(o.expectedStart);
+    span = { days, start, end: start + days - 1 };
+    spans.set(o, span);
+  }
+  return span;
+};
+
+/** The part of a deal's value that lands between two day numbers, spread evenly over its duration. */
+function landing(o, value, fromDay, toDay) {
+  const { days, start, end } = spanOf(o);
+  const a = Math.max(start, fromDay);
+  const b = Math.min(end, toDay);
   if (b < a) return 0;
-  return (value / days) * (dayDiff(a, b) + 1);
+  return (value / days) * (b - a + 1);
 }
 
 const openAt = (opps, date) => opps.filter((o) => o.createdDate <= date && (o.status === "open" || o.closeDate > date));
@@ -199,7 +214,8 @@ function coverageAt(ctx, date, open, probOf, monthly) {
   const last3 = [1, 2, 3].map((i) => addMonths(ym, -i));
   const rrDays = last3.reduce((s, m) => s + daysInMonth(m), 0);
   const remainingDays = daysInMonth(ym) - dayOf(date) + w.months.filter((m) => m > ym).reduce((s, m) => s + daysInMonth(m), 0);
-  const nextDay = addDays(date, 1);
+  const nextDay = dayNumber(addDays(date, 1));
+  const lastDay = dayNumber(w.to);
   const out = { label: w.label, kind: w.kind, date };
   for (const k of ["revenue", "gp"]) {
     let target = 0;
@@ -214,7 +230,7 @@ function coverageAt(ctx, date, open, probOf, monthly) {
     const remaining = target - actual;
     const uncovered = remaining - projected;
     const value = k === "revenue" ? (o) => o.expectedRevenue : (o) => o.expectedGp;
-    const pipeline = open.reduce((s, o) => s + probOf(o) * landing(o, value(o), nextDay, w.to), 0);
+    const pipeline = open.reduce((s, o) => s + probOf(o) * landing(o, value(o), nextDay, lastDay), 0);
     out[k] = {
       target,
       actualToDate: actual,

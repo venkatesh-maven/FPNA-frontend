@@ -165,6 +165,7 @@ export function ensureSeeded() {
   const quarterKey = currentQuarterKey();
   const st = forecastStore.read();
   if (st.seededFor === quarterKey) return;
+  if (ds.meta.live) return; // real submissions only: nobody has submitted until they do
   const subs = [];
   ds.org.reps.forEach((rep, i) => {
     const kind = i % 6; // 0 missing · 1 confirmed · 2 returned · otherwise submitted

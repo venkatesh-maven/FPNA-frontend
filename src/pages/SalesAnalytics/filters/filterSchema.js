@@ -7,6 +7,7 @@ export const FILTER_FIELDS = [
   { key: "from", url: "pf", type: "single", default: "", group: "period" },
   { key: "to", url: "pt", type: "single", default: "", group: "period" },
   { key: "compare", url: "cmp", type: "single", default: "budget", group: "period" },
+  { key: "currencyUnit", url: "cu", type: "single", default: "actualvalue", group: "period" },
 
   { key: "bu", url: "bu", type: "multi", label: "Business unit", group: "hierarchy", options: "businessUnits" },
   { key: "region", url: "rg", type: "multi", label: "Region", group: "hierarchy", options: "regions" },
@@ -34,6 +35,13 @@ export const FILTER_FIELDS = [
   { key: "commissionStatus", url: "cs", type: "multi", label: "Commission status", group: "cost", options: "commissionStatuses" },
 
   { key: "scenario", url: "scn", type: "single", default: "actual", label: "Scenario", group: "scenario", options: "scenarios" },
+];
+
+// Same ids and labels as the Financial Reports' Currency Unit filter.
+export const CURRENCY_UNITS = [
+  { id: "actualvalue", label: "Actual" },
+  { id: "thousands", label: "Thousands" },
+  { id: "millions", label: "Millions" },
 ];
 
 export const FILTER_GROUPS = [

@@ -515,6 +515,14 @@ button{
 /* Excel-style column resizing (utils/tableColumnResize.js): a grip on the
    right edge of every header cell, a faint divider on header hover, a solid
    one while dragging. */
+/* Anchor for the handle. In the base layer (and zero specificity) so a cell's
+   own `sticky` / `relative` utility always wins — unlayered CSS would beat
+   every Tailwind v4 utility and unpin sticky header cells. */
+@layer base {
+  :where(th:has(> .col-resize-handle), td:has(> .col-resize-handle)) {
+    position: relative;
+  }
+}
 .col-resize-handle {
   position: absolute;
   top: 0;

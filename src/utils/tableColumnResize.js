@@ -69,6 +69,16 @@ function headerLayout(table) {
   return { grid, last, count, edges, signature };
 }
 
+// The handle is absolutely positioned, so its cell must not be `static`.
+// index.css does that with a zero-specificity `:has()` rule, which any class
+// on the cell (`sticky`, `relative`, …) overrides. Only browsers without
+// `:has()` fall back to an inline style — and that one is dropped again if
+// the cell later turns sticky (an inline `relative` would beat the class and
+// unpin the column).
+const SUPPORTS_HAS =
+  typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("selector(:has(> a))");
+const INLINE_POS_ATTR = "data-col-resize-pos";
+
 function ensureHandles(layout) {
   for (const { cell, col } of layout.edges) {
     let handle = Array.from(cell.children).find((el) => el.classList.contains(HANDLE_CLASS));
@@ -77,8 +87,14 @@ function ensureHandles(layout) {
       handle.className = HANDLE_CLASS;
       handle.title = "Drag to resize · double-click to fit";
       handle.setAttribute("aria-hidden", "true");
-      if (getComputedStyle(cell).position === "static") cell.style.position = "relative";
+      if (!SUPPORTS_HAS && getComputedStyle(cell).position === "static") {
+        cell.style.position = "relative";
+        cell.setAttribute(INLINE_POS_ATTR, "");
+      }
       cell.appendChild(handle);
+    } else if (cell.hasAttribute(INLINE_POS_ATTR) && cell.classList.contains("sticky")) {
+      cell.style.position = "";
+      cell.removeAttribute(INLINE_POS_ATTR);
     }
     handle.dataset.col = String(col);
   }

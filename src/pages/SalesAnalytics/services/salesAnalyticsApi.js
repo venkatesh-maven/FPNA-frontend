@@ -9,7 +9,8 @@ import { executiveView } from "./mockServer/executive";
 import { directorView, repSummaryView } from "./mockServer/director";
 import { clientDetailView, resolveRepId, salespersonView } from "./mockServer/salesperson";
 import { kpiBreakdownView, trendDrillView } from "./mockServer/drill";
-import { filterOptionsFor } from "./mockServer/filterOptions";
+import { filterOptionsFor, narrowServerOptions } from "./mockServer/filterOptions";
+import { loadFilterOptions } from "./liveData";
 import { commentaryStore, forecastStore, scenarioStore } from "./store/stores";
 import { whatIfBaselineView } from "./mockServer/whatIf";
 import * as fc from "./mockServer/forecast";
@@ -46,8 +47,17 @@ export function listViewAsUsers() {
   }));
 }
 
+/** Filter-bar options from the backend (GET /filters), narrowed to the viewer's access. */
 export async function getFilterOptions(viewer) {
-  return filterOptionsFor(getDataset(), resolveAccess(viewer));
+  const ds = getDataset();
+  const access = resolveAccess(viewer);
+  if (!ds.meta.live) return filterOptionsFor(ds, access); // the seeded sample (tests)
+  try {
+    return narrowServerOptions(await loadFilterOptions(), ds, access);
+  } catch (e) {
+    console.error("Staffing analytics: filter options API failed, building them locally", e);
+    return filterOptionsFor(ds, access);
+  }
 }
 
 export const getExecutiveOverview = handle(["view_executive_analytics"], executiveView);

@@ -584,10 +584,11 @@ const AskAI = ({ reportId = 'pnl', config: configProp, open: openProp, onOpenCha
     setIsLoading(true);
     try {
       const ctx = await fetchContext();
-      const { data } = await axios.post(`${API_BASE_URL}/api/v1/ai`, {
-        message: question,
-        context: ctx || undefined,
-      });
+      const { data } = await axios.post(
+        `${API_BASE_URL}/api/v1/ai`,
+        { message: question, context: ctx || undefined },
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      );
       setMessages((prev) => [
         ...prev,
         {

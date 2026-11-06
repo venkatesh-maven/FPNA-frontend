@@ -104,6 +104,7 @@
   const AccountsReceivableAlerts = lazy(() => import('../pages/SmartFinancialAlerts/AccountsReceivableAlerts'));
   const AccountsPayableAlerts = lazy(() => import('../pages/SmartFinancialAlerts/AccountsPayableAlerts'));
   const UserManagement = lazy(() => import('../pages/Suport/User Management/UserManagement'));
+  const AICreditsPage = lazy(() => import('../pages/AICredits/AICreditsPage'));
   const SettingsCustomization = lazy(() => import('../pages/SettingsCustomization/SettingsCustomization'));
   const ExpenseTrendAnalysis = lazy(() => import('../pages/Performance Analytics/Finance and Accounting/ExpendTrendAnalysis'));
   const HeadcountPayroll = lazy(() => import('../pages/ForecastingOverview/HeadcountPayroll'));
@@ -323,6 +324,7 @@ const RecruiterAccessAdminPage = lazy(() => import('../pages/RecruiterAnalytics/
                 <Route path="/help-Support" element={<HelpSupport />} />
                 <Route element={<AdminProtectedRoute />}>
                   <Route path="/user-management" element={<UserManagement />} />
+                  <Route path="/settings-customization/ai-credits" element={<AICreditsPage />} />
                 </Route>
                 <Route path="/cashFlow-projections" element={<CashFlowProjections />} />
                 <Route path="/smart-financial-alerts" element={<SmartFinancialAlerts />} />

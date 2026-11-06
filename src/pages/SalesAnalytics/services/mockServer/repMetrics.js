@@ -137,7 +137,7 @@ export function buildRepRows(ctx) {
       name: rep.name,
       team: team.name,
       teamId: team.id,
-      territory: `${branch.name}, ${ctx.index.regionById.get(branch.regionId).name}`,
+      territory: branch.name === ctx.index.regionById.get(branch.regionId).name ? branch.name : `${branch.name}, ${ctx.index.regionById.get(branch.regionId).name}`,
       vertical: ctx.index.verticalById.get(rep.primaryVerticalId)?.name,
 
       revenue,

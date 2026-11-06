@@ -58,7 +58,7 @@ export function generateDataset({ seed = DATASET_SEED, asOf = DATASET_AS_OF, sta
     p.serviceLineId = p.clientId ? clientById.get(p.clientId).serviceLineId : null;
   }
 
-  return {
+  return indexDataset({
     meta: { seed, asOf, asOfYm, startYm, version: DATASET_VERSION },
     org,
     clients,
@@ -70,13 +70,22 @@ export function generateDataset({ seed = DATASET_SEED, asOf = DATASET_AS_OF, sta
     facts,
     plans,
     expenses,
+  });
+}
+
+/** Lookups every view uses; the sample and the live dataset share them. */
+export function indexDataset(ds) {
+  const { org, clients, assignments, contractors, opportunities, facts, plans, expenses } = ds;
+  const byId = (rows) => new Map(rows.map((r) => [r.id, r]));
+  return {
+    ...ds,
     index: {
-      clientById,
+      clientById: byId(clients),
       repById: byId(org.reps),
       teamById: byId(org.teams),
       personById: byId(org.people),
-      verticalById,
-      branchById,
+      verticalById: byId(org.verticals),
+      branchById: byId(org.branches),
       regionById: byId(org.regions),
       buById: byId(org.businessUnits),
       serviceLineById: byId(org.serviceLines),
@@ -94,9 +103,16 @@ export function generateDataset({ seed = DATASET_SEED, asOf = DATASET_AS_OF, sta
 }
 
 let cached = null;
+let live = null;
 
-/** The session's dataset, generated once on first use. */
+/** Real data from the server replaces the sample once the module has loaded it. */
+export const setLiveDataset = (ds) => {
+  live = ds;
+};
+
+/** The session's dataset: the live one when loaded, otherwise the sample, generated once on first use. */
 export function getDataset() {
+  if (live) return live;
   if (!cached) cached = generateDataset();
   return cached;
 }

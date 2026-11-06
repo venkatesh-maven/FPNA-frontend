@@ -37,7 +37,7 @@ export function financialBases(ctx) {
   const out = {};
   for (const b of PLAN_BASES) {
     const t = sumPlans(ctx, ctx.planWindow, b);
-    out[b] = { revenue: t.revenue, gp: t.gp, plan: t };
+    out[b] = t.rows ? { revenue: t.revenue, gp: t.gp, plan: t } : { revenue: null, gp: null, plan: t };
   }
   const win = actualCompareWindows(ctx);
   for (const b of ["py", "pp"]) {

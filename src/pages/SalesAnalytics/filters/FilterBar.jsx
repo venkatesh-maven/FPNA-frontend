@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { FiFilter, FiRotateCcw, FiX } from "react-icons/fi";
 import ActionHoverLabel from "../../FinancialReports/ActionHoverLabel";
 import { COMPARE_BASES, PERIOD_PRESETS } from "../calc/periods";
-import { DEFAULT_FILTERS, FILTER_FIELDS, FILTER_GROUPS, isActive } from "./filterSchema";
+import { CURRENCY_UNITS, DEFAULT_FILTERS, FILTER_FIELDS, FILTER_GROUPS, isActive } from "./filterSchema";
 import { useSalesFilters } from "./SalesFiltersContext";
 
 const selectClass = "border border-sky-200 rounded-md bg-white px-2 py-1.5 text-sm text-sky-900";
@@ -55,7 +55,7 @@ function chipLabel(field, value, options) {
   return `${field.label}: ${name(value)}`;
 }
 
-export default function FilterBar() {
+export default function FilterBar({ showCurrencyUnit = false }) {
   const { filters, setFilters, options } = useSalesFilters();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(filters);
@@ -123,6 +123,17 @@ export default function FilterBar() {
             ))}
           </select>
         </label>
+
+        {showCurrencyUnit ? (
+          <label className="flex items-center gap-1.5 text-sm text-sky-800">
+            <span className="font-medium">Currency Unit</span>
+            <select value={filters.currencyUnit} onChange={(e) => setFilters({ ...filters, currencyUnit: e.target.value })} className={selectClass}>
+              {CURRENCY_UNITS.map((u) => (
+                <option key={u.id} value={u.id}>{u.label}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <div className="relative ml-auto" ref={ref}>
           <button

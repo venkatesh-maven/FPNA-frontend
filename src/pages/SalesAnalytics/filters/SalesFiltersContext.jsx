@@ -41,11 +41,23 @@ export function SalesFiltersProvider({ children }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filters = useMemo(() => decodeFilters(params), [params]);
+  const urlFilters = useMemo(() => decodeFilters(params), [params]);
 
   useEffect(() => {
-    writeSession(encodeFilters(filters).toString());
-  }, [filters]);
+    writeSession(encodeFilters(urlFilters).toString());
+  }, [urlFilters]);
+
+  // A saved link can carry ids the data no longer has (a person who left, an
+  // old sample id): those are dropped rather than emptying the screen.
+  const filters = useMemo(() => {
+    if (!options) return urlFilters;
+    const known = { ...urlFilters };
+    for (const f of FILTER_FIELDS) {
+      const list = f.type === "multi" ? options[f.options] : null;
+      if (list) known[f.key] = urlFilters[f.key].filter((id) => list.some((o) => o.id === id));
+    }
+    return known;
+  }, [urlFilters, options]);
 
   useEffect(() => {
     if (!ready) return undefined;

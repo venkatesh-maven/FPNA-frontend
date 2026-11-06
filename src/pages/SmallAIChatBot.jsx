@@ -247,11 +247,11 @@ const SmallAIChatBot = ({ isExpanded = false }) => {
     try {
       const ctx = await getCategoryContext(category);
 
-      const { data } = await axios.post(`${API_BASE_URL}/api/v1/ai`, {
-        message: question,
-        context: ctx || undefined,
-        history: conversationHistory,
-      });
+      const { data } = await axios.post(
+        `${API_BASE_URL}/api/v1/ai`,
+        { message: question, context: ctx || undefined, history: conversationHistory },
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      );
 
       const replyText = data?.reply || 'Sorry, I could not generate a response.';
 

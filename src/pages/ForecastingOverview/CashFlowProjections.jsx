@@ -1362,6 +1362,7 @@ export default function CashflowForecasting() {
       total_receipts: receipts,
       total_payments: payments,
       net_cashflow_adjusted: receipts - payments,
+      net_cashflow_ai: sumOf(agg.net.ai),
       closing_balance: openingCash + receipts - payments,
     };
   }, [rows, months.length, openingCash]);

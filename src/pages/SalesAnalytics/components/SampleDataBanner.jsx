@@ -1,7 +1,9 @@
 import React from "react";
 import { FiAlertCircle } from "react-icons/fi";
+import { getDataset } from "../mock/dataset";
 
 export default function SampleDataBanner() {
+  if (getDataset().meta.live) return null;
   return (
     <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
       <FiAlertCircle size={14} className="mt-0.5 shrink-0" />

@@ -9,6 +9,7 @@ import NotificationToast from './NotificationToast';
 import MessageNotification from './MessageNotification';
 import { AuthContext } from '../../context/AuthContext';
 import AIDropdown from './AIDropdown';
+import AICreditsHeaderPill from '../../pages/AICredits/AICreditsHeaderPill';
 
 const Navbar = ({ toggleSidebar }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -81,6 +82,9 @@ const Navbar = ({ toggleSidebar }) => {
 
         {/* Right Side - Icons */}
         <div className="flex items-center space-x-4">
+          {/* AI credits left (src/pages/AICredits) */}
+          <AICreditsHeaderPill />
+
           {/* Ask AI Button */}
           <div className="relative" ref={askAIRef}>
             <button

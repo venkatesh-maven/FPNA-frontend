@@ -145,14 +145,21 @@ const CF_CHILDREN = (() => {
     month_ending_cash_position: ["cash_on_hand", "net_cash_change"],
   };
 })();
-// Table styling per CF_LAYOUT type (label = the sticky first cell).
+// Table styling per CF_LAYOUT type, matching the P&L table: white rows with
+// a light-sky sticky label column, semibold sky-900 labels, regular-weight
+// values (label = the sticky first cell, value = each month cell).
 const CF_ROW_STYLE = {
-  section: { row: "bg-sky-100", label: "bg-sky-100 font-bold text-sky-900" },
-  subsection: { row: "bg-sky-50", label: "bg-sky-50 font-bold text-sky-800 pl-5" },
-  line: { row: "border-b", label: "bg-white font-medium pl-6", cell: "py-2" },
-  total: { row: "border-b bg-sky-100 font-bold", label: "bg-sky-100 font-bold", cell: "py-2.5" },
-  grand: { row: "border-b-2 border-sky-300 bg-sky-200 font-bold", label: "bg-sky-200 font-bold", cell: "py-3" },
+  section: { row: "border-b bg-sky-50", label: "py-2 bg-sky-50 font-bold text-sky-900" },
+  subsection: { row: "border-b", label: "py-2 pl-5 bg-white font-semibold text-sky-800" },
+  line: { row: "border-b hover:bg-slate-50", label: "py-3 pl-6 bg-white font-medium text-sky-900", value: "" },
+  total: { row: "border-b hover:bg-slate-50", label: "py-3 bg-sky-50 font-semibold text-sky-900", value: "" },
+  grand: { row: "border-b hover:bg-slate-50", label: "py-3 bg-sky-50 font-semibold text-sky-900", value: "font-semibold" },
 };
+// Right-pinned Insights / Recommendation columns, same as the P&L table.
+// The Insights offset equals the full Recommendation cell width (190 + 24).
+const STICKY_RECOMMENDATION = "sticky right-0 z-10 w-[214px] min-w-[214px] max-w-[214px]";
+const STICKY_INSIGHTS =
+  "sticky right-[214px] z-10 w-[244px] min-w-[244px] max-w-[244px] shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.25)]";
 // Lines the AI reads any direct-method line against.
 const CF_SUMMARY_LINES = CF_LINES.filter((r) =>
   ["total_cash_receipts", "total_cash_payments", "net_cash_change", "month_ending_cash_position"].includes(r.key),
@@ -1442,6 +1449,68 @@ export default function CashFlowReport({ detailed = false }) {
     </span>
   );
 
+  // Insights + Recommendation cells for a line (monthly and comparison
+  // tables), pinned right like the P&L. Saved "Refine with AI" commentary
+  // (one per line for this view, so always the latest) wins over the
+  // rule-based text.
+  const renderCommentaryCells = (m) => {
+    const saved = lineCommentary.byLine[m.key];
+    const insightText = saved?.explanation || cashflowNarrative.insights[m.key] || "—";
+    const recommendationText = saved?.recommendation || cashflowNarrative.recommendations[m.key];
+    return (
+      <>
+        <td className={`px-3 py-2 text-sky-700 ${STICKY_INSIGHTS} bg-white`}>
+          <p className="w-[220px] line-clamp-2 leading-snug whitespace-normal" title={insightText}>
+            {saved?.explanation && (
+              <BsChatLeftTextFill
+                size={11}
+                className="inline mr-1 align-[-1px] text-emerald-600"
+                aria-label="Saved AI commentary"
+              />
+            )}
+            {insightText}
+          </p>
+        </td>
+        <td className={`px-3 py-2 text-sky-700 ${STICKY_RECOMMENDATION} bg-white`}>
+          {recommendationText ? (
+            <p className="w-[190px] line-clamp-2 leading-snug whitespace-normal" title={recommendationText}>
+              {saved?.recommendation && (
+                <BsChatLeftTextFill
+                  size={11}
+                  className="inline mr-1 align-[-1px] text-emerald-600"
+                  aria-label="Saved AI recommendation"
+                />
+              )}
+              {recommendationText}
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setRefineLine({ key: m.key, label: m.label })}
+              className="inline-flex items-center gap-1 text-left text-sky-500 hover:text-sky-800"
+            >
+              <BsChatLeftText size={12} /> Get AI recommendation
+            </button>
+          )}
+        </td>
+      </>
+    );
+  };
+
+  // Section / sub-section heading row: label only, the month cells blank and
+  // the pinned commentary columns kept white so they line up.
+  const renderHeadingRow = (m, idx, monthCells) => {
+    const style = CF_ROW_STYLE[m.type];
+    return (
+      <tr key={`heading-${idx}`} className={style.row}>
+        <td className={`w-px px-3 whitespace-nowrap sticky left-0 z-10 ${style.label}`}>{m.label}</td>
+        <td colSpan={monthCells} />
+        <td className={`${STICKY_INSIGHTS} bg-white`} />
+        <td className={`${STICKY_RECOMMENDATION} bg-white`} />
+      </tr>
+    );
+  };
+
   // The commentary shown under the report, offered with the CSV download.
   const exportCommentary = collectCommentary({
     lineTitle: "Cash Flow Line Commentary",
@@ -1748,95 +1817,48 @@ export default function CashFlowReport({ detailed = false }) {
         {/* TABLES + METRICS */}
         {loading && <TableSkeleton />}
 
-        {/* NORMAL TABLE (Metrics Row, Period Columns) */}
+        {/* NORMAL TABLE (Metrics Row, Period Columns) — P&L table style */}
         {!loading && rows.length > 0 && !hasComparisonSelected && (
-          <div className="report-table-scroll overflow-auto mt-4 border border-sky-200 rounded-lg bg-white">
-            <table className="min-w-[1100px] w-full text-x text-sky-900">
-              <thead className="bg-sky-900 text-white">
+          <div className="report-table-scroll overflow-auto mt-2 border border-sky-200 rounded-lg bg-white">
+            <table className="w-full text-x">
+              <thead className="bg-sky-900 text-white sticky top-0 z-20">
                 <tr>
-                  <th className="px-3 py-1.5 text-left sticky left-0 z-20 bg-sky-900">
-                    METRICS
+                  <th className="w-px px-3 py-1.5 text-left whitespace-nowrap sticky left-0 z-30 bg-sky-900">
+                    METRIC
                   </th>
                   {sortedRows.map((r) => (
-                    <th key={r.period} className="px-3 py-1.5 text-right">
+                    <th key={r.period} className="px-2 py-1.5 text-right whitespace-nowrap">
                       {r.period}
                     </th>
                   ))}
-                  <th className="px-3 py-1.5 text-left whitespace-nowrap">
+                  <th className={`px-3 py-1.5 text-left whitespace-nowrap ${STICKY_INSIGHTS} z-30 bg-sky-900`}>
                     Insights
                   </th>
-                  <th className="px-3 py-1.5 text-left whitespace-nowrap">
+                  <th className={`px-3 py-1.5 text-left whitespace-nowrap ${STICKY_RECOMMENDATION} z-30 bg-sky-900`}>
                     Recommendation
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {layout.map((metric, idx) => {
+                  if (!metric.key) return renderHeadingRow(metric, idx, sortedRows.length);
                   const style = CF_ROW_STYLE[metric.type];
-                  if (!metric.key) {
-                    return (
-                      <tr key={`heading-${idx}`} className={style.row}>
-                        <td className={`px-3 py-2 whitespace-nowrap sticky left-0 z-10 ${style.label}`}>
-                          {metric.label}
-                        </td>
-                        <td colSpan={sortedRows.length + 2} />
-                      </tr>
-                    );
-                  }
-                  // Saved "Refine with AI" commentary (one per line for this
-                  // view, so always the latest) wins over the rule-based text.
-                  const saved = lineCommentary.byLine[metric.key];
-                  const insightText = saved?.explanation || cashflowNarrative.insights[metric.key] || "—";
-                  const recommendationText = saved?.recommendation || cashflowNarrative.recommendations[metric.key];
                   return (
-                  <tr key={metric.key} className={style.row}>
-                    <td className={`px-3 ${style.cell} min-w-[300px] whitespace-nowrap sticky left-0 z-10 ${style.label}`}>
-                      {renderLineLabel(metric)}
-                    </td>
-                    {sortedRows.map((r) => (
-                      <td
-                        key={`${metric.key}-${r.period}`}
-                        className={`relative px-3 ${style.cell} text-right whitespace-nowrap`}
-                      >
-                        {analyzeCellButton(metric, r, "monthly", formatDollar(r[metric.key]))}
-                        {formatDollar(r[metric.key])}
+                    <tr key={metric.key} className={style.row}>
+                      <td className={`w-px px-3 whitespace-nowrap sticky left-0 z-10 ${style.label}`}>
+                        {renderLineLabel(metric)}
                       </td>
-                    ))}
-                    <td className="px-3 py-2 w-[380px] min-w-[380px] text-sky-700">
-                      <p className="line-clamp-2 leading-snug" title={insightText}>
-                        {saved?.explanation && (
-                          <BsChatLeftTextFill
-                            size={11}
-                            className="inline mr-1 align-[-1px] text-emerald-600"
-                            aria-label="Saved AI commentary"
-                          />
-                        )}
-                        {insightText}
-                      </p>
-                    </td>
-                    <td className="px-3 py-2 w-[340px] min-w-[340px] text-sky-700">
-                      {recommendationText ? (
-                        <p className="line-clamp-2 leading-snug" title={recommendationText}>
-                          {saved?.recommendation && (
-                            <BsChatLeftTextFill
-                              size={11}
-                              className="inline mr-1 align-[-1px] text-emerald-600"
-                              aria-label="Saved AI recommendation"
-                            />
-                          )}
-                          {recommendationText}
-                        </p>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setRefineLine({ key: metric.key, label: metric.label })}
-                          className="inline-flex items-center gap-1 text-sky-500 hover:text-sky-800 whitespace-nowrap"
+                      {sortedRows.map((r) => (
+                        <td
+                          key={`${metric.key}-${r.period}`}
+                          className={`relative px-2 py-3 whitespace-nowrap text-right text-sky-900 ${style.value}`}
                         >
-                          <BsChatLeftText size={12} /> Get AI recommendation
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                          {analyzeCellButton(metric, r, "monthly", formatDollar(r[metric.key]))}
+                          {formatDollar(r[metric.key])}
+                        </td>
+                      ))}
+                      {renderCommentaryCells(metric)}
+                    </tr>
                   );
                 })}
               </tbody>
@@ -1844,15 +1866,15 @@ export default function CashFlowReport({ detailed = false }) {
           </div>
         )}
 
-        {/* ====== YOUR COMPARISON TABLE BLOCK (UNCHANGED STYLE) ====== */}
+        {/* COMPARISON TABLE — P&L table style */}
         {!loading && rows.length > 0 && hasComparisonSelected && (
-          <div className="report-table-scroll overflow-auto mt-3 border border-sky-200 rounded-lg bg-white">
-            <table className="min-w-[1200px] w-full text-x">
-              <thead className="z-20">
+          <div className="report-table-scroll overflow-auto mt-2 border border-sky-200 rounded-lg bg-white">
+            <table className="w-full text-x">
+              <thead className="sticky top-0 z-20">
                 <tr className="bg-sky-900 text-white">
                   <th
                     rowSpan={2}
-                    className="px-3 py-1.5 text-left whitespace-nowrap sticky left-0 z-30 bg-sky-900"
+                    className="w-px px-3 py-1.5 text-left whitespace-nowrap sticky left-0 z-30 bg-sky-900"
                   >
                     METRIC
                   </th>
@@ -1860,79 +1882,79 @@ export default function CashFlowReport({ detailed = false }) {
                     <th
                       key={r.period}
                       colSpan={3}
-                      className="px-3 py-1.5 text-right border-l border-white/20 whitespace-nowrap"
+                      className="px-2 py-1.5 text-right border-l border-white/20 whitespace-nowrap"
                     >
                       {r.period} VS {r?.comparision?.prev_period || "—"}
                     </th>
                   ))}
+                  <th rowSpan={2} className={`px-3 py-1.5 text-left whitespace-nowrap ${STICKY_INSIGHTS} z-30 bg-sky-900`}>
+                    Insights
+                  </th>
+                  <th rowSpan={2} className={`px-3 py-1.5 text-left whitespace-nowrap ${STICKY_RECOMMENDATION} z-30 bg-sky-900`}>
+                    Recommendation
+                  </th>
                 </tr>
 
                 <tr className="bg-sky-800 text-white">
-                  {sortedRows.map((r, idx) => (
-                    <React.Fragment key={`${r.period}-${idx}-sub`}>
-                      <th className="px-3 py-1 text-right border-l border-white/20 whitespace-nowrap">
-                        <HeaderDates top="Current" bottom="Value" />
-                      </th>
-                      <th className="px-3 py-1 text-right whitespace-nowrap">
-                        <HeaderDates top="Previous" bottom="Value" />
-                      </th>
-                      <th className="px-3 py-1 text-right whitespace-nowrap">
-                        <HeaderDates top="Variance" bottom="Diff" />
-                      </th>
-                    </React.Fragment>
-                  ))}
+                  {sortedRows.map((r, idx) => {
+                    const curLbl = r.period || "Current";
+                    const prevLbl = r?.comparision?.prev_period || "Previous";
+                    return (
+                      <React.Fragment key={`${r.period}-${idx}-sub`}>
+                        <th className="px-2 py-1 text-right border-l border-white/20 whitespace-nowrap">
+                          <HeaderDates top={curLbl} bottom="Current" />
+                        </th>
+                        <th className="px-2 py-1 text-right whitespace-nowrap">
+                          <HeaderDates top={prevLbl} bottom="Previous" />
+                        </th>
+                        <th className="px-2 py-1 text-right whitespace-nowrap">
+                          <HeaderDates top={`${curLbl} vs ${prevLbl}`} bottom="Variance" />
+                        </th>
+                      </React.Fragment>
+                    );
+                  })}
                 </tr>
               </thead>
 
               <tbody>
                 {layout.map((m, idx) => {
+                  if (!m.key) return renderHeadingRow(m, idx, sortedRows.length * 3);
                   const style = CF_ROW_STYLE[m.type];
-                  if (!m.key) {
-                    return (
-                      <tr key={`heading-${idx}`} className={style.row}>
-                        <td className={`px-3 py-2 whitespace-nowrap sticky left-0 z-10 ${style.label}`}>
-                          {m.label}
-                        </td>
-                        <td colSpan={sortedRows.length * 3} />
-                      </tr>
-                    );
-                  }
                   return (
-                  <tr key={m.key} className={style.row}>
-                    <td className={`px-3 ${style.cell} min-w-[300px] text-sky-900 whitespace-nowrap sticky left-0 z-10 ${style.label}`}>
-                      {renderLineLabel(m)}
-                    </td>
+                    <tr key={m.key} className={style.row}>
+                      <td className={`w-px px-3 whitespace-nowrap sticky left-0 z-10 ${style.label}`}>
+                        {renderLineLabel(m)}
+                      </td>
 
-                    {sortedRows.map((r, i) => {
-                      const c = r?.comparision || {};
-                      const cur = r?.[m.key];
-                      const prev = getPrevValue(c, m.key);
-                      const diff = getDiffValue(c, m.key);
-                      const ui = getVarianceUI(diff, m.group === "payments");
+                      {sortedRows.map((r, i) => {
+                        const c = r?.comparision || {};
+                        const cur = r?.[m.key];
+                        const prev = getPrevValue(c, m.key);
+                        const diff = getDiffValue(c, m.key);
+                        const ui = getVarianceUI(diff, m.group === "payments");
 
-                      return (
-                        <React.Fragment key={`${r.period}-${m.key}-${i}`}>
-                          <td className="px-3 py-3 whitespace-nowrap border-l border-sky-100 text-right text-sky-900">
-                            {formatDollar(cur)}
-                          </td>
-                          <td className="px-3 py-3 whitespace-nowrap text-right text-sky-900">
-                            {formatDollar(prev)}
-                          </td>
-                          <td
-                            className={`relative px-3 py-3 whitespace-nowrap text-right ${ui.bg}`}
-                          >
-                            {analyzeCellButton(m, r, "comparison", formatDollar(diff))}
-                            <span
-                              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full  text-[11p] font-semibold ${ui.pill}`}
-                            >
-                              <span className="text-[10px]">{ui.arrow}</span>
-                              {formatDollar(diff)}
-                            </span>
-                          </td>
-                        </React.Fragment>
-                      );
-                    })}
-                  </tr>
+                        return (
+                          <React.Fragment key={`${r.period}-${m.key}-${i}`}>
+                            <td className={`px-2 py-3 whitespace-nowrap border-l border-sky-100 text-right text-sky-900 ${style.value}`}>
+                              {formatDollar(cur)}
+                            </td>
+                            <td className="px-2 py-3 whitespace-nowrap text-right text-sky-900">
+                              {formatDollar(prev)}
+                            </td>
+                            <td className={`relative px-2 py-3 whitespace-nowrap text-right ${ui.bg}`}>
+                              {analyzeCellButton(m, r, "comparison", formatDollar(diff))}
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-semibold ${ui.pill}`}
+                              >
+                                <span className="text-[10px]">{ui.arrow}</span>
+                                {formatDollar(diff)}
+                              </span>
+                            </td>
+                          </React.Fragment>
+                        );
+                      })}
+                      {renderCommentaryCells(m)}
+                    </tr>
                   );
                 })}
               </tbody>

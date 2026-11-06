@@ -6,11 +6,11 @@ import { useSalesFilters } from "../../filters/SalesFiltersContext";
 import { useSalesAccess } from "../../access/SalesAccessContext";
 
 /** What sits behind a KPI tile, loaded when the tile is opened. */
-export default function KpiBreakdownDrawer({ tile, repId, onClose }) {
+export default function KpiBreakdownDrawer({ tile, repId, onClose, fetcher = getKpiBreakdown }) {
   const { filters } = useSalesFilters();
   const { viewer } = useSalesAccess();
   const args = tile ? { kpiKey: tile.key, label: tile.label, ...(repId ? { repId } : {}) } : {};
-  const { data, meta, loading, error } = useSalesQuery(getKpiBreakdown, filters, viewer, args, { enabled: !!tile });
+  const { data, meta, loading, error } = useSalesQuery(fetcher, filters, viewer, args, { enabled: !!tile });
   return (
     <EvidenceDrawer
       open={!!tile}

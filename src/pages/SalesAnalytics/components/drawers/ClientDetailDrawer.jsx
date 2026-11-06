@@ -21,11 +21,11 @@ const Summary = ({ label, value, sub }) => (
 );
 
 /** One client: monthly actual vs target, the assignments behind the period, and open deals. */
-export default function ClientDetailDrawer({ clientId, repId, onClose }) {
+export default function ClientDetailDrawer({ clientId, repId, onClose, fetcher = getClientDetail }) {
   const { filters } = useSalesFilters();
   const { viewer } = useSalesAccess();
   const args = { clientId, ...(repId ? { repId } : {}) };
-  const { data, meta, loading } = useSalesQuery(getClientDetail, filters, viewer, args, { enabled: !!clientId });
+  const { data, meta, loading } = useSalesQuery(fetcher, filters, viewer, args, { enabled: !!clientId });
   const c = data?.client;
   const months = (data?.monthly || []).map((m) => ({ ...m, label: formatYmShort(m.ym) }));
 
@@ -45,7 +45,7 @@ export default function ClientDetailDrawer({ clientId, repId, onClose }) {
                 <Summary label={`Revenue · ${meta?.period?.label}`} value={compactMoney(data.totals.revenue)} />
                 <Summary label="GP" value={compactMoney(data.totals.gp)} sub={`GM ${pct(data.totals.gmPct)}`} />
                 <Summary label="Billed hours" value={hours(data.totals.billedHours)} />
-                <Summary label="Assignments billed" value={data.assignments.length} sub={`${data.openOpportunities.length} open opportunities`} />
+                <Summary label="Assignments billed" value={data.assignments?.length ?? "—"} sub={`${data.openOpportunities.length} open opportunities`} />
               </div>
             ) : null}
           </div>
@@ -74,8 +74,9 @@ export default function ClientDetailDrawer({ clientId, repId, onClose }) {
                   col("wages", "Wages"), col("burden", "Burden"), col("otherDirect", "Other direct"),
                   col("revenue", "Revenue"), col("gp", "GP"), col("gmPct", "GM", "pct"),
                 ]}
-                rows={data.assignments}
+                rows={data.assignments || []}
                 maxHeight="360px"
+                emptyLabel={data.assignments ? undefined : "Needs assignment and timesheet data."}
               />
             </div>
             <div className="bg-white rounded-xl shadow-sm border border-sky-100 p-4">

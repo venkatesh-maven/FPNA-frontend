@@ -500,6 +500,21 @@ const fetchYears = useCallback(async (authToken) => {
     return () => clearTimeout(timer);
   }, [token]);
 
+  // Timers don't run while the computer sleeps or a background tab is frozen, so the token can
+  // expire unnoticed; check again whenever the user comes back, rather than on their next click.
+  useEffect(() => {
+    if (!token) return undefined;
+    const check = () => {
+      if (document.visibilityState !== "hidden" && isTokenExpired(token)) expireSessionRef.current();
+    };
+    document.addEventListener("visibilitychange", check);
+    window.addEventListener("focus", check);
+    return () => {
+      document.removeEventListener("visibilitychange", check);
+      window.removeEventListener("focus", check);
+    };
+  }, [token]);
+
 
 
   

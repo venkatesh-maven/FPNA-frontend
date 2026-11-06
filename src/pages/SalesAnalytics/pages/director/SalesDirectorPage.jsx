@@ -35,7 +35,8 @@ function leaderboardTotals(rows) {
     if (rows.some((r) => r[k] == null && r.__masked?.includes(k))) {
       t[k] = null;
       t.__masked = [...(t.__masked || []), k];
-    } else t[k] = rows.reduce((s, r) => s + (r[k] || 0), 0);
+    } else if (rows.every((r) => r[k] == null)) t[k] = null; // no data for this column, which is not a total of zero
+    else t[k] = rows.reduce((s, r) => s + (r[k] || 0), 0);
   }
   t.gmPct = t.revenue ? (t.gp / t.revenue) * 100 : null;
   t.gpAttainment = t.gpTarget ? (t.gp / t.gpTarget) * 100 : null;
@@ -46,6 +47,7 @@ export default function SalesDirectorPage() {
   const { viewer, access } = useSalesAccess();
   const { filters } = useSalesFilters();
   const { data, meta, loading, error } = useSalesQuery(getDirectorView, filters, viewer);
+
   const [tile, setTile] = useState(null);
   const [repId, setRepId] = useState(null);
   const [client, setClient] = useState(null);
@@ -76,9 +78,9 @@ export default function SalesDirectorPage() {
             groups={LEADERBOARD_GROUPS}
             rows={data.leaderboard}
             rowKey="repId"
-            presets={LEADERBOARD_PRESETS}
+            presets={LEADERBOARD_PRESETS.filter((p) => data.leaderboard.some((r) => r[p.key] != null))}
             defaultSort={{ key: "gp", dir: "desc" }}
-            defaultGroups={["identity", "performance", "staffing", "costs"]}
+            defaultGroups={["identity", "performance", "costs", "pipeline"]}
             totals={totals}
             onRowClick={(r) => setRepId(r.repId)}
             onVisibleColumnsChange={setLbColumns}

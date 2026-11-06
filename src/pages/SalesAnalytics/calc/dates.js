@@ -45,8 +45,8 @@ const toUtc = (date) => Date.UTC(+date.slice(0, 4), +date.slice(5, 7) - 1, +date
 
 export const addDays = (date, n) => new Date(toUtc(date) + n * 86400000).toISOString().slice(0, 10);
 
-/** Days from `a` to `b` (b − a). */
-export const dayDiff = (a, b) => Math.round((toUtc(b) - toUtc(a)) / 86400000);
+/** Days from `a` to `b` (b − a); null when either date is unknown (an open deal has no close date). */
+export const dayDiff = (a, b) => (a && b ? Math.round((toUtc(b) - toUtc(a)) / 86400000) : null);
 
 export const minDate = (a, b) => (a <= b ? a : b);
 export const maxDate = (a, b) => (a >= b ? a : b);

@@ -152,10 +152,12 @@ export function expenseRows(ctx, window, predicate = () => true) {
 }
 
 const PLAN_DRIVER_KEYS = ["N", "H", "R", "W", "burden", "odc", "fees"];
-const emptyPlan = () => ({ revenue: 0, gp: 0, N: 0, H: 0, R: 0, W: 0, burden: 0, odc: 0, fees: 0 });
+const emptyPlan = () => ({ revenue: 0, gp: 0, N: 0, H: 0, R: 0, W: 0, burden: 0, odc: 0, fees: 0, rows: 0 });
 
 const addPlan = (t, p, basis, w) => {
   const b = p[basis];
+  if (!b) return; // this plan has no figure for the month
+  t.rows += 1;
   t.revenue += b.revenue * w;
   t.gp += b.gp * w;
   if (b.N != null) for (const k of PLAN_DRIVER_KEYS) t[k] += b[k] * w;

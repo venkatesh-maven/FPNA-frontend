@@ -23,10 +23,10 @@ const Summary = ({ label, value, sub }) => (
 );
 
 /** One salesperson for a director: headline figures, months, clients, deals and expenses. */
-export default function RepSummaryDrawer({ repId, onClose, onOpenClient }) {
+export default function RepSummaryDrawer({ repId, onClose, onOpenClient, fetcher = getRepSummary }) {
   const { filters } = useSalesFilters();
   const { viewer } = useSalesAccess();
-  const { data, meta, loading } = useSalesQuery(getRepSummary, filters, viewer, { repId }, { enabled: !!repId });
+  const { data, meta, loading } = useSalesQuery(fetcher, filters, viewer, { repId }, { enabled: !!repId });
   const r = data?.rep;
   const months = (data?.monthly || []).map((m) => ({ ...m, label: formatYmShort(m.ym) }));
 
@@ -43,7 +43,7 @@ export default function RepSummaryDrawer({ repId, onClose, onOpenClient }) {
                 <Summary label="GP" value={compactMoney(r.gp)} sub={`${r.gpAttainment != null ? pct(r.gpAttainment, 0) : "—"} of target`} />
                 <Summary label="Revenue" value={compactMoney(r.revenue)} sub={`Target ${compactMoney(r.revenueTarget)}`} />
                 <Summary label="Contribution" value={compactMoney(r.contribution)} sub={r.salesExpense == null ? null : `Sales expense ${compactMoney(r.salesExpense)}`} />
-                <Summary label="Contractors on billing" value={r.contractors} sub={`${r.starts} starts · ${r.ends} ends`} />
+                <Summary label="Contractors on billing" value={r.contractors ?? "—"} sub={r.contractors == null ? "Needs assignment data" : `${r.starts} starts · ${r.ends} ends`} />
               </div>
             ) : null}
           </div>

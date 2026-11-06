@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getMyAccess } from "../services/salesAnalyticsApi";
 import { accessStore, viewAsStore } from "../services/store/stores";
+import { getDataset } from "../mock/dataset";
 
 const SalesAccessContext = createContext(null);
 
@@ -10,7 +11,10 @@ const SalesAccessContext = createContext(null);
  * persona's capabilities and scope exactly as the server will from a token.
  */
 export function SalesAccessProvider({ children }) {
-  const [userId, setUserId] = useState(() => viewAsStore.read().userId);
+  const [userId, setUserId] = useState(() => {
+    const saved = viewAsStore.read().userId;
+    return getDataset().index.personById.has(saved) ? saved : getDataset().org.people[0]?.id;
+  });
   const [access, setAccess] = useState(null);
 
   const [rulesVersion, setRulesVersion] = useState(0);
